@@ -12,6 +12,8 @@ const SaveLLMConfigSchema = z.object({
   openrouterModel: z.string().trim().max(200).optional(),
   geminiApiKey: z.string().trim().max(1000).optional(),
   openrouterApiKey: z.string().trim().max(1000).optional(),
+  clearGeminiApiKey: z.boolean().optional(),
+  clearOpenrouterApiKey: z.boolean().optional(),
 });
 
 export type SaveLLMConfigInput = z.infer<typeof SaveLLMConfigSchema>;
@@ -49,6 +51,21 @@ function readStringSetting(
 ): string {
   const storedValue = readSettingValue(values, key);
   if (storedValue === undefined || storedValue === "") {
+    return fallback;
+  }
+  if (typeof storedValue !== "string") {
+    throw new Error(`The ${key} setting must be a string.`);
+  }
+  return storedValue;
+}
+
+function readApiKeySetting(
+  values: Map<string, string>,
+  key: string,
+  fallback: string,
+): string {
+  const storedValue = readSettingValue(values, key);
+  if (storedValue === undefined) {
     return fallback;
   }
   if (typeof storedValue !== "string") {
@@ -105,12 +122,12 @@ export function getResolvedLLMConfig(): ResolvedLLMConfig {
       "openrouter_model",
       process.env.OPENROUTER_MODEL ?? "",
     ),
-    geminiApiKey: readStringSetting(
+    geminiApiKey: readApiKeySetting(
       values,
       "gemini_api_key",
       process.env.GEMINI_API_KEY ?? "",
     ),
-    openrouterApiKey: readStringSetting(
+    openrouterApiKey: readApiKeySetting(
       values,
       "openrouter_api_key",
       process.env.OPENROUTER_API_KEY ?? "",
@@ -150,7 +167,9 @@ export function saveLLMConfig(input: unknown): PublicLLMConfig {
     ]);
   }
 
-  if (
+  if (parsed.clearGeminiApiKey) {
+    settingsToSave.push(["gemini_api_key", JSON.stringify("")]);
+  } else if (
     parsed.geminiApiKey &&
     parsed.geminiApiKey !== current.geminiApiKey &&
     parsed.geminiApiKey !== publicConfig.geminiKeyMask
@@ -160,7 +179,9 @@ export function saveLLMConfig(input: unknown): PublicLLMConfig {
       JSON.stringify(parsed.geminiApiKey),
     ]);
   }
-  if (
+  if (parsed.clearOpenrouterApiKey) {
+    settingsToSave.push(["openrouter_api_key", JSON.stringify("")]);
+  } else if (
     parsed.openrouterApiKey &&
     parsed.openrouterApiKey !== current.openrouterApiKey &&
     parsed.openrouterApiKey !== publicConfig.openrouterKeyMask

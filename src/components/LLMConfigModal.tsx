@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 type ProviderName = "gemini" | "openrouter";
 
@@ -23,7 +24,7 @@ type LLMConfigModalProps = {
 
 const modelSuggestions: Record<ProviderName, string[]> = {
   gemini: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
-  openrouter: ["google/gemini-2.0-flash-exp:free"],
+  openrouter: ["google/gemini-2.5-flash", "google/gemini-2.5-flash-lite"],
 };
 
 async function readError(response: Response): Promise<string> {
@@ -46,6 +47,7 @@ export function LLMConfigModal({
   buttonClassName = "flex h-9 items-center gap-2 rounded-full border border-white/[0.1] px-3 text-xs font-medium text-zinc-300 transition-colors duration-150 hover:bg-white/[0.06] hover:text-white sm:px-3",
 }: LLMConfigModalProps) {
   const [isOpen, setIsOpen] = useState(initialOpen);
+  const [portalReady, setPortalReady] = useState(false);
   const [config, setConfig] = useState<PublicLLMConfig | null>(null);
   const [provider, setProvider] = useState<ProviderName>("gemini");
   const [model, setModel] = useState("");
@@ -55,6 +57,10 @@ export function LLMConfigModal({
   const [busy, setBusy] = useState<"load" | "save" | "test" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   const loadConfig = useCallback(async () => {
     setBusy("load");
@@ -116,7 +122,12 @@ export function LLMConfigModal({
     setOpenrouterApiKey("");
   }
 
-  async function saveConfig(): Promise<PublicLLMConfig | null> {
+  async function saveConfig(
+    options: {
+      clearGeminiApiKey?: boolean;
+      clearOpenrouterApiKey?: boolean;
+    } = {},
+  ): Promise<PublicLLMConfig | null> {
     setBusy("save");
     setError("");
     setNotice("");
@@ -130,6 +141,7 @@ export function LLMConfigModal({
           openrouterModel,
           geminiApiKey,
           openrouterApiKey,
+          ...options,
         }),
       });
       if (!response.ok) {
@@ -141,7 +153,11 @@ export function LLMConfigModal({
       setOpenrouterModel(nextConfig.openrouterModel);
       setGeminiApiKey("");
       setOpenrouterApiKey("");
-      setNotice("Configuration enregistrée. Les clés restent privées.");
+      setNotice(
+        options.clearGeminiApiKey || options.clearOpenrouterApiKey
+          ? "Clé effacée."
+          : "Configuration enregistrée. Les clés restent privées.",
+      );
       window.dispatchEvent(
         new CustomEvent("english-coach:llm-config-saved", {
           detail: nextConfig.hasGeminiKey || nextConfig.hasOpenrouterKey,
@@ -236,9 +252,10 @@ export function LLMConfigModal({
         <span>{displayLabel}</span>
       </button>
 
-      {isOpen ? (
+      {isOpen && portalReady && typeof document !== "undefined"
+        ? createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 p-4 backdrop-blur-md"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               closeModal();
@@ -249,7 +266,7 @@ export function LLMConfigModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby="llm-config-title"
-            className="max-h-[min(90dvh,760px)] w-full max-w-[560px] overflow-y-auto rounded-3xl border border-white/[0.09] bg-[#111114] p-5 shadow-2xl sm:p-7"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-[#111114] p-6 shadow-2xl"
           >
             <header className="mb-6 flex items-start justify-between gap-5">
               <div>
@@ -357,12 +374,26 @@ export function LLMConfigModal({
 
                 <div className="space-y-4 rounded-xl border border-white/[0.08] bg-black/15 p-4">
                   <div>
-                    <label
-                      htmlFor="gemini-key"
-                      className="mb-2 block text-[13px] font-medium text-zinc-300"
-                    >
-                      Clé Gemini
-                    </label>
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <label
+                        htmlFor="gemini-key"
+                        className="text-[13px] font-medium text-zinc-300"
+                      >
+                        Clé Gemini
+                      </label>
+                      {config?.hasGeminiKey ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void saveConfig({ clearGeminiApiKey: true })
+                          }
+                          disabled={busy !== null}
+                          className="min-h-11 rounded-full px-3 text-xs text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Effacer la clé
+                        </button>
+                      ) : null}
+                    </div>
                     <input
                       id="gemini-key"
                       type="password"
@@ -384,17 +415,31 @@ export function LLMConfigModal({
                     ) : null}
                   </div>
                   <div>
-                    <label
-                      htmlFor="openrouter-key"
-                      className="mb-2 block text-[13px] font-medium text-zinc-300"
-                    >
-                      Clé OpenRouter
-                      {provider === "gemini" ? (
-                        <span className="ml-1.5 text-[11px] font-normal text-zinc-500">
-                          (repli automatique)
-                        </span>
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <label
+                        htmlFor="openrouter-key"
+                        className="text-[13px] font-medium text-zinc-300"
+                      >
+                        Clé OpenRouter
+                        {provider === "gemini" ? (
+                          <span className="ml-1.5 text-[11px] font-normal text-zinc-500">
+                            (repli automatique)
+                          </span>
+                        ) : null}
+                      </label>
+                      {config?.hasOpenrouterKey ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void saveConfig({ clearOpenrouterApiKey: true })
+                          }
+                          disabled={busy !== null}
+                          className="min-h-11 shrink-0 rounded-full px-3 text-xs text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Effacer la clé
+                        </button>
                       ) : null}
-                    </label>
+                    </div>
                     <input
                       id="openrouter-key"
                       type="password"
@@ -457,8 +502,10 @@ export function LLMConfigModal({
               </div>
             )}
           </section>
-        </div>
-      ) : null}
+        </div>,
+        document.body,
+      )
+        : null}
     </>
   );
 }

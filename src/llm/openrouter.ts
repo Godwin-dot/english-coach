@@ -62,8 +62,28 @@ export class OpenRouterProvider implements LLMProvider {
 
     if (!response.ok) {
       const status = response.status;
+      const responseBody = await response.text();
+      let apiMessage = responseBody;
+      try {
+        const body: unknown = JSON.parse(responseBody);
+        if (typeof body === "object" && body !== null && "error" in body) {
+          const apiError = body.error;
+          if (typeof apiError === "string") {
+            apiMessage = apiError;
+          } else if (
+            typeof apiError === "object" &&
+            apiError !== null &&
+            "message" in apiError &&
+            typeof apiError.message === "string"
+          ) {
+            apiMessage = apiError.message;
+          }
+        }
+      } catch {
+        // Keep the response body as the diagnostic when it is not JSON.
+      }
       throw new LLMProviderError(
-        `OpenRouter a répondu avec le statut HTTP ${status}.`,
+        `OpenRouter a répondu avec le statut HTTP ${status}${apiMessage ? ` : ${apiMessage}` : "."}`,
         { status, retryable: status === 429 || status >= 500 },
       );
     }

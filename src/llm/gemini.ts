@@ -23,8 +23,9 @@ export class GeminiProvider implements LLMProvider {
   ): Promise<T> {
     let response;
     try {
+      const normalizedModel = this.model.replace(/^models\//, "").trim();
       response = await this.client.models.generateContent({
-        model: this.model,
+        model: normalizedModel,
         contents: userPrompt,
         config: {
           systemInstruction: systemPrompt,
@@ -33,10 +34,14 @@ export class GeminiProvider implements LLMProvider {
       });
     } catch (error) {
       const status = getHttpStatus(error);
+      const apiMessage =
+        error instanceof Error ? getGeminiApiMessage(error.message) : null;
       throw new LLMProviderError(
-        status
-          ? `Gemini a répondu avec le statut HTTP ${status}.`
-          : "Impossible de joindre Gemini.",
+        status && apiMessage
+          ? `Gemini a répondu avec le statut HTTP ${status} : ${apiMessage}`
+          : status
+            ? `Gemini a répondu avec le statut HTTP ${status}.`
+            : "Impossible de joindre Gemini.",
         {
           status,
           retryable:
@@ -55,4 +60,30 @@ export class GeminiProvider implements LLMProvider {
 
     return parseStructuredResponse(responseText, schema);
   }
+}
+
+function getGeminiApiMessage(message: string): string | null {
+  const jsonStart = message.indexOf("{");
+  if (jsonStart === -1) {
+    return message.trim() || null;
+  }
+
+  try {
+    const body: unknown = JSON.parse(message.slice(jsonStart));
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      "error" in body &&
+      typeof body.error === "object" &&
+      body.error !== null &&
+      "message" in body.error &&
+      typeof body.error.message === "string"
+    ) {
+      return body.error.message;
+    }
+  } catch {
+    return message.trim() || null;
+  }
+
+  return message.trim() || null;
 }

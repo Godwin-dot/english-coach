@@ -50,22 +50,52 @@ function toLessonView(
   };
 }
 
+async function generateValidLessonPayload(
+  topic: string,
+  cefrLevel: CEFRLevel,
+): Promise<GeneratedLessonPayload> {
+  const prompts = lessonPrompts(topic, cefrLevel);
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const systemPrompt =
+      attempt === 0
+        ? prompts.systemPrompt
+        : `${prompts.systemPrompt} The previous output was outside the required length. Rewrite it so the English passage is between 120 and 180 words while keeping the same meaning and the exact JSON schema.`;
+    const userPrompt =
+      attempt === 0
+        ? prompts.userPrompt
+        : `${prompts.userPrompt} Please correct the previous answer and ensure the English passage has 120 to 180 words exactly.`;
+
+    try {
+      const payload = await getLLMProvider().generateStructuredJSON(
+        systemPrompt,
+        userPrompt,
+        GeneratedLessonPayloadSchema,
+      );
+      const wordCount = payload.content_en.trim().split(/\s+/u).length;
+      if (wordCount >= 120 && wordCount <= 180) {
+        return payload;
+      }
+      lastError = new LLMProviderError(
+        "Le texte généré ne respecte pas la longueur demandée (120 à 180 mots).",
+      );
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  throw lastError ??
+    new LLMProviderError(
+      "Le texte généré ne respecte pas la longueur demandée (120 à 180 mots).",
+    );
+}
+
 export async function createAndSaveLesson(
   topic: string,
   cefrLevel: CEFRLevel,
 ): Promise<LessonView> {
-  const prompts = lessonPrompts(topic, cefrLevel);
-  const payload = await getLLMProvider().generateStructuredJSON(
-    prompts.systemPrompt,
-    prompts.userPrompt,
-    GeneratedLessonPayloadSchema,
-  );
-  const wordCount = payload.content_en.trim().split(/\s+/u).length;
-  if (wordCount < 120 || wordCount > 180) {
-    throw new LLMProviderError(
-      "Le texte généré ne respecte pas la longueur demandée (120 à 180 mots).",
-    );
-  }
+  const payload = await generateValidLessonPayload(topic, cefrLevel);
   const now = new Date().toISOString();
   const row = db
     .insert(lessons)
