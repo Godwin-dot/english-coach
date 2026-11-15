@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `idx_cards_language_lower_term` ON `cards` (`language`,lower("term"));
