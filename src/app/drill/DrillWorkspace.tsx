@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import type {
   MistakeCategoryCount,
   RecentMistake,
@@ -11,6 +12,7 @@ import type {
   GeneratedDrillPrompt,
 } from "@/schemas/drill";
 import type { CEFRLevel } from "@/schemas/lesson";
+import { updateSessionStateField, useSessionState } from "@/hooks/useSessionState";
 
 type DrillExercise = GeneratedDrillPrompt & {
   cefrLevel: CEFRLevel;
@@ -23,6 +25,14 @@ type DrillEvaluation = DrillEvaluationResult & {
   categories: MistakeCategoryCount[];
   totalMistakes: number;
   addedWords: string[];
+};
+
+type DrillSessionState = {
+  exercise: DrillExercise | null;
+  selectedLevel: CEFRLevel;
+  topic: string;
+  translation: string;
+  evaluation: DrillEvaluation | null;
 };
 
 type RecognitionResult = { readonly transcript: string };
@@ -120,11 +130,37 @@ export function DrillWorkspace({
   hasProviderKey: boolean;
   retrySentence: string | null;
 }) {
-  const [exercise, setExercise] = useState<DrillExercise | null>(null);
-  const [selectedLevel, setSelectedLevel] = useState<CEFRLevel>(cefrLevel);
-  const [topic, setTopic] = useState("");
-  const [translation, setTranslation] = useState("");
-  const [evaluation, setEvaluation] = useState<DrillEvaluation | null>(null);
+  const [session, setSession, isHydrated] = useSessionState<DrillSessionState>(
+    "english-coach:drill:v1",
+    {
+      exercise: null,
+      selectedLevel: cefrLevel,
+      topic: "",
+      translation: "",
+      evaluation: null,
+    },
+  );
+  const { exercise, selectedLevel, topic, translation, evaluation } = session;
+  const setExercise: Dispatch<SetStateAction<DrillExercise | null>> = useCallback(
+    (update) => updateSessionStateField(setSession, "exercise", update),
+    [setSession],
+  );
+  const setSelectedLevel: Dispatch<SetStateAction<CEFRLevel>> = useCallback(
+    (update) => updateSessionStateField(setSession, "selectedLevel", update),
+    [setSession],
+  );
+  const setTopic: Dispatch<SetStateAction<string>> = useCallback(
+    (update) => updateSessionStateField(setSession, "topic", update),
+    [setSession],
+  );
+  const setTranslation: Dispatch<SetStateAction<string>> = useCallback(
+    (update) => updateSessionStateField(setSession, "translation", update),
+    [setSession],
+  );
+  const setEvaluation: Dispatch<SetStateAction<DrillEvaluation | null>> = useCallback(
+    (update) => updateSessionStateField(setSession, "evaluation", update),
+    [setSession],
+  );
   const [mistakeSummary, setMistakeSummary] = useState(initialMistakes);
   const [busy, setBusy] = useState<"generate" | "evaluate" | null>(null);
   const [error, setError] = useState("");
@@ -180,10 +216,16 @@ export function DrillWorkspace({
   }, [selectedLevel, topic]);
 
   useEffect(() => {
-    void loadExercise(retrySentence);
+    if (isHydrated && !exercise) {
+      void loadExercise(retrySentence);
+    }
     // Load once from the URL; later settings changes only affect the next request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [retrySentence]);
+  }, [exercise, isHydrated, retrySentence]);
+
+  useEffect(() => {
+    if (isHydrated) startedAt.current = Date.now();
+  }, [isHydrated]);
 
   useEffect(() => {
     const speechWindow = window as SpeechWindow;
@@ -288,7 +330,7 @@ export function DrillWorkspace({
         : "border-rose-300/20 bg-rose-300/[0.08] text-rose-100";
 
   return (
-    <main className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-7 sm:pt-9">
+    <main className="animate-view-enter mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-7 sm:pt-9">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm text-zinc-400">Pratiquez la production active</p>

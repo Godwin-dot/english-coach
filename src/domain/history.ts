@@ -5,7 +5,12 @@ import { activityLog, cards, lessons, mistakes } from "@/db/schema";
 export type HistoryCard = Omit<
   typeof cards.$inferSelect,
   "fsrsStateJson"
-> & { isDue: boolean };
+> & {
+  isDue: boolean;
+  reps: number;
+  intervalDays: number;
+  fsrsState: number;
+};
 
 export type DrillHistoryEntry = {
   id: number;
@@ -49,10 +54,35 @@ export function getFullHistory(now = new Date()) {
     .from(cards)
     .orderBy(desc(cards.createdAt), desc(cards.id))
     .all()
-    .map(({ fsrsStateJson: _, ...card }) => ({
-      ...card,
-      isDue: card.due <= now.toISOString(),
-    }));
+    .map(({ fsrsStateJson, ...card }) => {
+      let reps = 0;
+      let intervalDays = 0;
+      let fsrsState = 0;
+      try {
+        const state: unknown = JSON.parse(fsrsStateJson);
+        if (typeof state === "object" && state !== null) {
+          if ("reps" in state && typeof state.reps === "number") reps = state.reps;
+          if (
+            "scheduled_days" in state &&
+            typeof state.scheduled_days === "number"
+          ) {
+            intervalDays = state.scheduled_days;
+          }
+          if ("state" in state && typeof state.state === "number") {
+            fsrsState = state.state;
+          }
+        }
+      } catch {
+        // Keep history readable if a legacy card has malformed FSRS metadata.
+      }
+      return {
+        ...card,
+        isDue: card.due <= now.toISOString(),
+        reps,
+        intervalDays,
+        fsrsState,
+      };
+    });
 
   const drillHistory: DrillHistoryEntry[] = db
     .select()

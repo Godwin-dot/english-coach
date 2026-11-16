@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DiscoveryCard, ReviewCardView } from "@/domain/cards";
 import type { ReviewIntervals, ReviewRating } from "@/srs";
+import { useSessionState } from "@/hooks/useSessionState";
 
 type DueQueueItem = {
   key: string;
@@ -26,6 +27,16 @@ type DueBatch = {
 
 type DiscoveryBatch = {
   cards: DiscoveryCard[];
+};
+
+type ReviewSessionState = {
+  cards: ReviewQueueItem[];
+  reviewedCount: number;
+  processedCount: number;
+  dueRemaining: number;
+  sessionFinished: boolean;
+  revealed: boolean;
+  seenDiscoveryTerms: string[];
 };
 
 const ratingButtons: Array<{
@@ -137,32 +148,51 @@ export function ReviewWorkspace({
   initialCards: ReviewCardView[];
   totalDueCount: number;
 }) {
-  const [cards, setCards] = useState<ReviewQueueItem[]>(
-    initialCards.map((data) => ({
-      key: `due-${data.id}`,
-      isDiscovery: false,
-      data,
-    })),
+  const [session, setSession, isHydrated] = useSessionState<ReviewSessionState>(
+    "english-coach:review:v1",
+    {
+      cards: initialCards.map((data) => ({
+        key: `due-${data.id}`,
+        isDiscovery: false,
+        data,
+      })),
+      reviewedCount: 0,
+      processedCount: 0,
+      dueRemaining: totalDueCount,
+      sessionFinished: false,
+      revealed: false,
+      seenDiscoveryTerms: [],
+    },
   );
-  const [reviewedCount, setReviewedCount] = useState(0);
-  const [processedCount, setProcessedCount] = useState(0);
-  const [dueRemaining, setDueRemaining] = useState(totalDueCount);
+  const {
+    cards,
+    reviewedCount,
+    processedCount,
+    dueRemaining,
+    sessionFinished,
+    revealed,
+  } = session;
   const [loadingMore, setLoadingMore] = useState(false);
-  const [sessionFinished, setSessionFinished] = useState(false);
-  const [revealed, setRevealed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [accent, setAccent] = useState<"en-US" | "en-GB">("en-US");
   const startedAt = useRef(Date.now());
-  const seenDiscoveryTerms = useRef(new Set<string>());
+  const seenDiscoveryTerms = useRef(new Set(session.seenDiscoveryTerms));
   const loadingMoreRef = useRef(false);
+  const previousQueueKey = useRef<string | null>(null);
   const queueItem = cards[0] ?? null;
   const currentCard = queueItem?.data ?? null;
   const discoveryMode = dueRemaining === 0;
   const currentNumber = processedCount + 1;
 
+  useEffect(() => {
+    if (isHydrated) {
+      seenDiscoveryTerms.current = new Set(session.seenDiscoveryTerms);
+    }
+  }, [isHydrated, session.seenDiscoveryTerms]);
+
   const loadNextBatch = useCallback(async () => {
-    if (loadingMoreRef.current || sessionFinished) {
+    if (!isHydrated || loadingMoreRef.current || sessionFinished) {
       return;
     }
 
@@ -189,9 +219,9 @@ export function ReviewWorkspace({
 
         const batch = body as DueBatch;
         if (batch.cards.length) {
-          setCards((current) => {
+          setSession((current) => {
             const currentIds = new Set(
-              current.flatMap((item) =>
+              current.cards.flatMap((item) =>
                 item.isDiscovery ? [] : [item.data.id],
               ),
             );
@@ -204,10 +234,12 @@ export function ReviewWorkspace({
                   data,
                 }),
               );
-            return additions.length ? [...current, ...additions] : current;
+            return additions.length
+              ? { ...current, cards: [...current.cards, ...additions] }
+              : current;
           });
         } else if (queuedDueIds.length === 0) {
-          setDueRemaining(0);
+          setSession((current) => ({ ...current, dueRemaining: 0 }));
         }
         return;
       }
@@ -233,11 +265,15 @@ export function ReviewWorkspace({
         seenDiscoveryTerms.current.add(term);
         return true;
       });
+      setSession((current) => ({
+        ...current,
+        seenDiscoveryTerms: [...seenDiscoveryTerms.current],
+      }));
       if (additions.length) {
-        setCards((current) => [
+        setSession((current) => ({
           ...current,
-          ...additions.map(makeDiscoveryQueueItem),
-        ]);
+          cards: [...current.cards, ...additions.map(makeDiscoveryQueueItem)],
+        }));
       } else {
         throw new Error("Aucun nouveau mot n’a été proposé. Réessayez.");
       }
@@ -251,19 +287,28 @@ export function ReviewWorkspace({
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [cards, dueRemaining, sessionFinished]);
+  }, [cards, dueRemaining, isHydrated, sessionFinished, setSession]);
 
   useEffect(() => {
-    if (cards.length <= 2 && !sessionFinished) {
+    if (isHydrated && cards.length <= 2 && !sessionFinished) {
       void loadNextBatch();
     }
-  }, [cards.length, loadNextBatch, sessionFinished]);
+  }, [cards.length, isHydrated, loadNextBatch, sessionFinished]);
 
   useEffect(() => {
-    setRevealed(false);
-    setError("");
-    startedAt.current = Date.now();
-  }, [queueItem?.key]);
+    if (!isHydrated) return;
+    if (previousQueueKey.current === null) {
+      previousQueueKey.current = queueItem?.key ?? "";
+      startedAt.current = Date.now();
+      return;
+    }
+    if (previousQueueKey.current !== (queueItem?.key ?? "")) {
+      previousQueueKey.current = queueItem?.key ?? "";
+      setSession((current) => ({ ...current, revealed: false }));
+      setError("");
+      startedAt.current = Date.now();
+    }
+  }, [isHydrated, queueItem?.key, setSession]);
 
   const submitReview = useCallback(
     async (rating: ReviewRating) => {
@@ -309,12 +354,18 @@ export function ReviewWorkspace({
         }
 
         if (!queueItem.isDiscovery) {
-          setDueRemaining((current) => Math.max(current - 1, 0));
+          setSession((current) => ({
+            ...current,
+            dueRemaining: Math.max(current.dueRemaining - 1, 0),
+          }));
         }
-        setCards((current) => current.filter((item) => item.key !== queueItem.key));
-        setReviewedCount((current) => current + 1);
-        setProcessedCount((current) => current + 1);
-        setRevealed(false);
+        setSession((current) => ({
+          ...current,
+          cards: current.cards.filter((item) => item.key !== queueItem.key),
+          reviewedCount: current.reviewedCount + 1,
+          processedCount: current.processedCount + 1,
+          revealed: false,
+        }));
       } catch (caught) {
         setError(
           caught instanceof Error
@@ -325,17 +376,59 @@ export function ReviewWorkspace({
         setIsSubmitting(false);
       }
     },
-    [currentCard, isSubmitting, queueItem, revealed],
+    [currentCard, isSubmitting, queueItem, revealed, setSession],
   );
 
   const skipKnownWord = useCallback(() => {
     if (!queueItem?.isDiscovery || isSubmitting) {
       return;
     }
-    setCards((current) => current.filter((item) => item.key !== queueItem.key));
-    setProcessedCount((current) => current + 1);
-    setRevealed(false);
-  }, [isSubmitting, queueItem]);
+    setSession((current) => ({
+      ...current,
+      cards: current.cards.filter((item) => item.key !== queueItem.key),
+      processedCount: current.processedCount + 1,
+      revealed: false,
+    }));
+  }, [isSubmitting, queueItem, setSession]);
+
+  const refreshQueue = useCallback(async () => {
+    if (!isHydrated || loadingMoreRef.current || isSubmitting) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    setError("");
+    try {
+      const response = await fetch("/api/review?mode=due", {
+        cache: "no-store",
+      });
+      const body: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(getErrorMessage(body));
+      const batch = body as DueBatch;
+      seenDiscoveryTerms.current.clear();
+      setSession({
+        cards: batch.cards.map((data) => ({
+          key: `due-${data.id}`,
+          isDiscovery: false,
+          data,
+        })),
+        reviewedCount: 0,
+        processedCount: 0,
+        dueRemaining: batch.remainingDueCount,
+        sessionFinished: false,
+        revealed: false,
+        seenDiscoveryTerms: [],
+      });
+      startedAt.current = Date.now();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Impossible d’actualiser la file de révision.",
+      );
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [isHydrated, isSubmitting, setSession]);
 
   useEffect(() => {
     function handleKeyboard(event: KeyboardEvent) {
@@ -350,7 +443,7 @@ export function ReviewWorkspace({
 
       if ((event.code === "Space" || event.key === "Enter") && !revealed && currentCard) {
         event.preventDefault();
-        setRevealed(true);
+        setSession((current) => ({ ...current, revealed: true }));
         return;
       }
 
@@ -363,7 +456,7 @@ export function ReviewWorkspace({
 
     window.addEventListener("keydown", handleKeyboard);
     return () => window.removeEventListener("keydown", handleKeyboard);
-  }, [currentCard, revealed, submitReview]);
+  }, [currentCard, revealed, setSession, submitReview]);
 
   function reportAudioUnavailable() {
     setError("La synthèse vocale n’est pas disponible dans ce navigateur.");
@@ -371,7 +464,7 @@ export function ReviewWorkspace({
 
   if (sessionFinished) {
     return (
-      <main className="mx-auto flex min-h-[calc(100vh-7rem)] max-w-5xl items-center px-4 py-10 sm:px-8">
+      <main className="animate-view-enter mx-auto flex min-h-[calc(100vh-7rem)] max-w-5xl items-center px-4 py-10 sm:px-8">
         <section className="relative w-full overflow-hidden rounded-3xl border border-white/[0.08] bg-[#111114] px-6 py-10 text-center sm:px-12 sm:py-14">
           <div
             aria-hidden="true"
@@ -396,7 +489,9 @@ export function ReviewWorkspace({
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
               <button
                 type="button"
-                onClick={() => setSessionFinished(false)}
+                onClick={() =>
+                  setSession((current) => ({ ...current, sessionFinished: false }))
+                }
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition-colors duration-150 hover:bg-zinc-200 active:scale-[0.98]"
               >
                 Continuer à réviser <span aria-hidden="true">→</span>
@@ -416,7 +511,7 @@ export function ReviewWorkspace({
 
   if (!queueItem || !currentCard) {
     return (
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
+      <main className="animate-view-enter mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
         <section className="rounded-3xl border border-white/[0.08] bg-[#111114] p-6 text-center sm:p-10">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-left">
             <p className="text-sm font-medium text-amber-200/90">
@@ -424,13 +519,25 @@ export function ReviewWorkspace({
                 ? "Nouveau vocabulaire · Découverte infinie"
                 : "Révisions espacées avec FSRS"}
             </p>
-            <button
-              type="button"
-              onClick={() => setSessionFinished(true)}
-              className="inline-flex min-h-11 items-center rounded-full border border-white/[0.08] bg-white/[0.035] px-4 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.08] hover:text-white"
-            >
-              Terminer la session
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void refreshQueue()}
+                disabled={loadingMore}
+                className="inline-flex min-h-11 items-center rounded-full border border-white/[0.08] bg-white/[0.035] px-4 text-xs font-medium text-zinc-300 transition-all duration-150 hover:bg-white/[0.08] active:scale-[0.985] disabled:opacity-50"
+              >
+                {loadingMore ? "Actualisation…" : "Actualiser la file"}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setSession((current) => ({ ...current, sessionFinished: true }))
+                }
+                className="inline-flex min-h-11 items-center rounded-full border border-white/[0.08] bg-white/[0.035] px-4 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.08] hover:text-white"
+              >
+                Terminer la session
+              </button>
+            </div>
           </div>
           <p className="mb-5 text-xs text-zinc-400">
             Dues : <span className="text-white">{dueRemaining}</span>
@@ -489,7 +596,7 @@ export function ReviewWorkspace({
   const intervals: ReviewIntervals = currentCard.intervals;
 
   return (
-    <main className="mx-auto max-w-5xl px-4 pb-8 pt-8 sm:px-8 sm:pt-12">
+    <main className="animate-view-enter mx-auto max-w-5xl px-4 pb-8 pt-8 sm:px-8 sm:pt-12">
       <header className="page-enter mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-amber-200/90">
@@ -502,6 +609,14 @@ export function ReviewWorkspace({
           </h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void refreshQueue()}
+            disabled={loadingMore}
+            className="inline-flex min-h-11 items-center rounded-full border border-white/[0.08] bg-white/[0.035] px-4 text-xs font-medium text-zinc-300 transition-all duration-150 hover:bg-white/[0.08] active:scale-[0.985] disabled:opacity-50"
+          >
+            {loadingMore ? "Actualisation…" : "Actualiser la file"}
+          </button>
           <label className="flex min-h-11 items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 text-xs text-zinc-400">
             Accent
             <select
@@ -518,7 +633,9 @@ export function ReviewWorkspace({
           </label>
           <button
             type="button"
-            onClick={() => setSessionFinished(true)}
+            onClick={() =>
+              setSession((current) => ({ ...current, sessionFinished: true }))
+            }
             className="inline-flex min-h-11 items-center rounded-full border border-white/[0.08] bg-white/[0.035] px-4 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.08] hover:text-white"
           >
             Terminer la session
@@ -582,7 +699,9 @@ export function ReviewWorkspace({
             </p>
             <button
               type="button"
-              onClick={() => setRevealed(true)}
+              onClick={() =>
+                setSession((current) => ({ ...current, revealed: true }))
+              }
               className="relative mt-9 inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-white px-6 text-sm font-medium text-zinc-950 transition-colors duration-150 hover:bg-zinc-200 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
             >
               Révéler la réponse <span aria-hidden="true">↓</span>
@@ -668,7 +787,7 @@ export function ReviewWorkspace({
                 type="button"
                 disabled={isSubmitting}
                 onClick={() => void submitReview(rating)}
-                className={`flex min-h-[62px] flex-col items-center justify-center rounded-2xl border px-3 py-2 transition-colors duration-150 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200 disabled:cursor-wait disabled:opacity-50 ${buttonAccent}`}
+                className={`flex min-h-[62px] flex-col items-center justify-center rounded-2xl border px-3 py-2 transition-all duration-150 active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200 disabled:cursor-wait disabled:opacity-50 ${buttonAccent}`}
               >
                 <span className="text-sm font-semibold">
                   {rating} · {label}

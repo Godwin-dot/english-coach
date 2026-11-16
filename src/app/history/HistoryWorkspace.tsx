@@ -151,6 +151,16 @@ export function HistoryWorkspace({
   }, [allMistakes, mistakeFilter]);
 
   const activeCard = filteredCards[practiceIndex] ?? null;
+  const translationScores = history.drillHistory.flatMap((entry) =>
+    entry.score === null ? [] : [entry.score],
+  );
+  const averageTranslationScore =
+    translationScores.length > 0
+      ? (
+          translationScores.reduce((total, score) => total + score, 0) /
+          translationScores.length
+        ).toLocaleString("fr-FR", { maximumFractionDigits: 1 })
+      : "—";
 
   async function deleteItem(kind: "card" | "lesson" | "mistake", id: number) {
     const key = `${kind}-${id}`;
@@ -245,25 +255,44 @@ export function HistoryWorkspace({
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-7 sm:pt-9">
+    <main className="animate-view-enter mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-7 sm:pt-9">
       <header className="mb-6">
         <p className="text-sm text-zinc-400">Votre parcours, à votre rythme</p>
         <h1 className="mt-1 font-serif text-3xl tracking-[-0.04em] text-white sm:text-4xl">
           Historique & entraînement libre
         </h1>
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
-            [`${allCards.length} cartes`, "text-amber-100"],
-            [`${history.drillHistory.length} traductions`, "text-violet-100"],
-            [`${allLessons.length} leçons`, "text-emerald-100"],
-            [`${allMistakes.length} erreurs`, "text-rose-100"],
-          ].map(([label, color]) => (
-            <span
+            {
+              label: "Cartes maîtrisées",
+              value: allCards.filter((card) => card.reps >= 1).length,
+              color: "text-amber-100",
+            },
+            {
+              label: "À réviser",
+              value: allCards.filter((card) => card.isDue).length,
+              color: "text-rose-100",
+            },
+            {
+              label: "Score moyen en traduction",
+              value: averageTranslationScore,
+              color: "text-violet-100",
+            },
+            {
+              label: "Leçons terminées",
+              value: allLessons.filter((lesson) => lesson.completedAt !== null).length,
+              color: "text-emerald-100",
+            },
+          ].map(({ label, value, color }) => (
+            <section
               key={label}
-              className={`rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs ${color}`}
+              className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#111114] px-3.5 py-3.5 sm:px-4"
             >
-              {label}
-            </span>
+              <p className="text-xs leading-5 text-zinc-400">{label}</p>
+              <p className={`mt-1 text-2xl font-semibold tabular-nums ${color}`}>
+                {value}
+              </p>
+            </section>
           ))}
         </div>
       </header>
@@ -374,23 +403,37 @@ export function HistoryWorkspace({
               </div>
               {activeCard ? (
                 <>
-                  <div className="mt-6 flex min-h-40 flex-col items-center justify-center text-center">
-                    <p className="text-xs text-zinc-500">
-                      {showBack ? "Traduction française" : "Terme anglais"}
-                    </p>
-                    <p className="mt-3 max-w-3xl break-words font-serif text-3xl leading-tight text-white sm:text-4xl">
-                      {showBack ? activeCard.translation : activeCard.term}
-                    </p>
-                    {!showBack && activeCard.phonetic ? (
-                      <p className="mt-2 font-mono text-sm text-zinc-400">
-                        {activeCard.phonetic}
-                      </p>
-                    ) : null}
-                    {showBack && activeCard.mnemonic ? (
-                      <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400">
-                        {activeCard.mnemonic}
-                      </p>
-                    ) : null}
+                  <div className="review-scene mt-5">
+                    <div className={`practice-card-inner ${showBack ? "is-flipped" : ""}`}>
+                      <article className="review-card-face flex min-h-[230px] flex-col items-center justify-center rounded-2xl border border-white/[0.07] bg-[#111114] p-5 text-center">
+                        <p className="text-xs text-zinc-500">Terme anglais</p>
+                        <p className="mt-3 max-w-full break-words font-serif text-3xl leading-tight text-white sm:text-4xl">
+                          {activeCard.term}
+                        </p>
+                        {activeCard.phonetic ? (
+                          <p className="mt-2 font-mono text-sm text-zinc-400">
+                            {activeCard.phonetic}
+                          </p>
+                        ) : null}
+                      </article>
+                      <article className="review-card-face review-card-back flex min-h-[230px] flex-col items-center justify-center rounded-2xl border border-white/[0.07] bg-[#111114] p-5 text-center">
+                        <p className="text-xs text-zinc-500">Traduction française</p>
+                        <p className="mt-3 max-w-full break-words font-serif text-3xl leading-tight text-white sm:text-4xl">
+                          {activeCard.translation}
+                        </p>
+                        <p className="mt-4 max-w-2xl break-words font-serif text-sm italic leading-6 text-amber-100">
+                          {activeCard.exampleSentence}
+                        </p>
+                        <p className="mt-1 max-w-2xl break-words text-xs leading-5 text-zinc-400">
+                          {activeCard.exampleTranslation}
+                        </p>
+                        {activeCard.mnemonic ? (
+                          <p className="mt-2 max-w-2xl text-xs leading-5 text-zinc-500">
+                            {activeCard.mnemonic}
+                          </p>
+                        ) : null}
+                      </article>
+                    </div>
                   </div>
                   <div className="mt-5 flex flex-wrap justify-center gap-2">
                     <button
@@ -405,7 +448,7 @@ export function HistoryWorkspace({
                     <button
                       type="button"
                       onClick={() => setShowBack((visible) => !visible)}
-                      className="min-h-11 rounded-full bg-white px-5 text-sm font-medium text-zinc-950 hover:bg-zinc-200"
+                      className="min-h-11 rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition-all duration-150 hover:bg-zinc-200 active:scale-[0.985]"
                     >
                       {showBack ? "Voir le recto" : "Révéler la réponse"}
                     </button>
@@ -414,14 +457,14 @@ export function HistoryWorkspace({
                     <button
                       type="button"
                       onClick={() => movePractice(-1)}
-                      className="min-h-11 rounded-full border border-white/[0.1] px-4 text-sm text-zinc-200 hover:bg-white/[0.05]"
+                      className="min-h-11 rounded-full border border-white/[0.1] px-4 text-sm text-zinc-200 transition-all duration-150 hover:bg-white/[0.05] active:scale-[0.985]"
                     >
                       ← Précédente
                     </button>
                     <button
                       type="button"
                       onClick={() => movePractice(1)}
-                      className="min-h-11 rounded-full border border-white/[0.1] px-4 text-sm text-zinc-200 hover:bg-white/[0.05]"
+                      className="min-h-11 rounded-full border border-white/[0.1] px-4 text-sm text-zinc-200 transition-all duration-150 hover:bg-white/[0.05] active:scale-[0.985]"
                     >
                       Suivante →
                     </button>
@@ -459,12 +502,35 @@ export function HistoryWorkspace({
                     <p className="mt-1 break-words text-sm text-zinc-300">
                       {card.translation}
                     </p>
-                    <p
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <p
                       className={`mt-2 text-xs ${
                         card.isDue ? "text-amber-100" : "text-zinc-500"
                       }`}
                     >
                       {dateLabel(card)}
+                      </p>
+                      <span className="rounded-full border border-white/[0.07] bg-white/[0.025] px-2.5 py-1 text-[11px] tabular-nums text-zinc-400">
+                        Intervalle : {card.intervalDays < 1 ? "< 1" : Math.round(card.intervalDays)} j
+                      </span>
+                      <span
+                        className={`rounded-full border px-2.5 py-1 text-[11px] ${
+                          card.reps === 0
+                            ? "border-violet-200/15 bg-violet-200/[0.05] text-violet-100"
+                            : card.fsrsState === 2 && card.intervalDays >= 14
+                              ? "border-emerald-200/15 bg-emerald-200/[0.05] text-emerald-100"
+                              : "border-amber-200/15 bg-amber-200/[0.05] text-amber-100"
+                        }`}
+                      >
+                        {card.reps === 0
+                          ? "Nouveau"
+                          : card.fsrsState === 2 && card.intervalDays >= 14
+                            ? "Acquis"
+                            : "En cours"}
+                      </span>
+                    </div>
+                    <p className="mt-3 break-words border-l border-amber-200/20 pl-3 font-serif text-sm italic leading-6 text-zinc-300">
+                      {card.exampleSentence}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">

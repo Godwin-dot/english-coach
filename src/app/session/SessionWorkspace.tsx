@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import type { DiscoveryCard, ReviewCardView } from "@/domain/cards";
 import type { LessonView } from "@/domain/lessons";
 import type {
@@ -10,6 +11,7 @@ import type {
 } from "@/schemas/drill";
 import type { CEFRLevel, KeywordItem } from "@/schemas/lesson";
 import type { ReviewRating } from "@/srs";
+import { updateSessionStateField, useSessionState } from "@/hooks/useSessionState";
 
 type ReviewItem =
   | { kind: "due"; key: string; card: ReviewCardView }
@@ -22,6 +24,23 @@ type SessionDrill = GeneratedDrillPrompt & {
 
 type SessionEvaluation = DrillEvaluationResult & {
   addedWords?: string[];
+};
+
+type SessionState = {
+  step: 1 | 2 | 3 | 4;
+  queue: ReviewItem[];
+  lesson: LessonView | null;
+  drills: SessionDrill[];
+  revealed: boolean;
+  reviewedCount: number;
+  addedWords: string[];
+  answers: number[];
+  quizScore: number | null;
+  cardStatuses: Record<string, string>;
+  translations: string[];
+  evaluations: (SessionEvaluation | null)[];
+  discoveryMode: boolean;
+  startedAt: number;
 };
 
 function errorMessage(body: unknown): string {
@@ -66,7 +85,7 @@ function RatingButtons({
           type="button"
           disabled={disabled}
           onClick={() => onRate(rating)}
-          className={`min-h-11 rounded-full border bg-white/[0.035] px-3 text-sm transition hover:bg-white/[0.08] disabled:cursor-wait disabled:opacity-50 ${colors}`}
+          className={`min-h-11 rounded-full border bg-white/[0.035] px-3 text-sm transition-all duration-150 hover:bg-white/[0.08] active:scale-[0.985] disabled:cursor-wait disabled:opacity-50 ${colors}`}
         >
           {label}
         </button>
@@ -86,40 +105,108 @@ export function SessionWorkspace({
   initialDueCards: ReviewCardView[];
   initialLesson: LessonView | null;
 }) {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
-  const [queue, setQueue] = useState<ReviewItem[]>(
-    initialDueCards.map((card) => ({
-      kind: "due",
-      key: `due-${card.id}`,
-      card,
-    })),
+  const [session, setSession, isHydrated] = useSessionState<SessionState>(
+    "english-coach:session:v1",
+    {
+      step: 1,
+      queue: initialDueCards.map((card) => ({
+        kind: "due",
+        key: `due-${card.id}`,
+        card,
+      })),
+      lesson: initialLesson,
+      drills: [],
+      revealed: false,
+      reviewedCount: 0,
+      addedWords: [],
+      answers: [],
+      quizScore: null,
+      cardStatuses: {},
+      translations: ["", ""],
+      evaluations: [null, null],
+      discoveryMode: initialDueCards.length === 0,
+      startedAt: 0,
+    },
   );
-  const [lesson, setLesson] = useState<LessonView | null>(initialLesson);
+  const {
+    step,
+    queue,
+    lesson,
+    drills,
+    revealed,
+    reviewedCount,
+    addedWords,
+    answers,
+    quizScore,
+    cardStatuses,
+    translations,
+    evaluations,
+    discoveryMode,
+  } = session;
+  const setStep: Dispatch<SetStateAction<SessionState["step"]>> = useCallback(
+    (update) => updateSessionStateField(setSession, "step", update),
+    [setSession],
+  );
+  const setQueue: Dispatch<SetStateAction<ReviewItem[]>> = useCallback(
+    (update) => updateSessionStateField(setSession, "queue", update),
+    [setSession],
+  );
+  const setLesson: Dispatch<SetStateAction<LessonView | null>> = useCallback(
+    (update) => updateSessionStateField(setSession, "lesson", update),
+    [setSession],
+  );
+  const setDrills: Dispatch<SetStateAction<SessionDrill[]>> = useCallback(
+    (update) => updateSessionStateField(setSession, "drills", update),
+    [setSession],
+  );
+  const setRevealed: Dispatch<SetStateAction<boolean>> = useCallback(
+    (update) => updateSessionStateField(setSession, "revealed", update),
+    [setSession],
+  );
+  const setReviewedCount: Dispatch<SetStateAction<number>> = useCallback(
+    (update) => updateSessionStateField(setSession, "reviewedCount", update),
+    [setSession],
+  );
+  const setAddedWords: Dispatch<SetStateAction<string[]>> = useCallback(
+    (update) => updateSessionStateField(setSession, "addedWords", update),
+    [setSession],
+  );
+  const setAnswers: Dispatch<SetStateAction<number[]>> = useCallback(
+    (update) => updateSessionStateField(setSession, "answers", update),
+    [setSession],
+  );
+  const setQuizScore: Dispatch<SetStateAction<number | null>> = useCallback(
+    (update) => updateSessionStateField(setSession, "quizScore", update),
+    [setSession],
+  );
+  const setCardStatuses: Dispatch<
+    SetStateAction<Record<string, string>>
+  > = useCallback(
+    (update) => updateSessionStateField(setSession, "cardStatuses", update),
+    [setSession],
+  );
+  const setTranslations: Dispatch<SetStateAction<string[]>> = useCallback(
+    (update) => updateSessionStateField(setSession, "translations", update),
+    [setSession],
+  );
+  const setEvaluations: Dispatch<
+    SetStateAction<(SessionEvaluation | null)[]>
+  > = useCallback(
+    (update) => updateSessionStateField(setSession, "evaluations", update),
+    [setSession],
+  );
   const [lessonLoading, setLessonLoading] = useState(false);
   const [discoveryLoading, setDiscoveryLoading] = useState(false);
-  const [drills, setDrills] = useState<SessionDrill[]>([]);
   const [drillsLoading, setDrillsLoading] = useState(false);
-  const [revealed, setRevealed] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(false);
-  const [reviewedCount, setReviewedCount] = useState(0);
-  const [addedWords, setAddedWords] = useState<string[]>([]);
-  const [answers, setAnswers] = useState<number[]>([]);
-  const [quizScore, setQuizScore] = useState<number | null>(null);
   const [quizBusy, setQuizBusy] = useState(false);
-  const [cardStatuses, setCardStatuses] = useState<Record<string, string>>({});
-  const [translations, setTranslations] = useState(["", ""]);
-  const [evaluations, setEvaluations] = useState<(SessionEvaluation | null)[]>([
-    null,
-    null,
-  ]);
   const [evaluationBusy, setEvaluationBusy] = useState<number | null>(null);
   const [error, setError] = useState("");
-  const sessionStartedAt = useRef(Date.now());
+  const previousQueueKey = useRef<string | null>(null);
   const discoveryRequested = useRef(false);
   const lessonRequested = useRef(false);
   const drillsRequested = useRef(false);
   const currentItem = queue[0] ?? null;
-  const discoveryMode = initialDueCards.length === 0;
   const currentWord =
     currentItem?.kind === "discovery"
       ? currentItem.card.term
@@ -130,7 +217,7 @@ export function SessionWorkspace({
   );
 
   const loadDiscovery = useCallback(async () => {
-    if (discoveryRequested.current || discoveryLoading) return;
+    if (!isHydrated || discoveryRequested.current || discoveryLoading) return;
     discoveryRequested.current = true;
     setDiscoveryLoading(true);
     setError("");
@@ -154,10 +241,10 @@ export function SessionWorkspace({
     } finally {
       setDiscoveryLoading(false);
     }
-  }, [discoveryLoading]);
+  }, [discoveryLoading, isHydrated]);
 
   const loadLesson = useCallback(async () => {
-    if (lesson || lessonRequested.current) return;
+    if (!isHydrated || lesson || lessonRequested.current) return;
     lessonRequested.current = true;
     setLessonLoading(true);
     setError("");
@@ -179,10 +266,10 @@ export function SessionWorkspace({
     } finally {
       setLessonLoading(false);
     }
-  }, [cefrLevel, interests, lesson]);
+  }, [cefrLevel, interests, isHydrated, lesson]);
 
   const loadDrills = useCallback(async () => {
-    if (drillsRequested.current) return;
+    if (!isHydrated || drillsRequested.current) return;
     drillsRequested.current = true;
     setDrillsLoading(true);
     setError("");
@@ -211,23 +298,40 @@ export function SessionWorkspace({
     } finally {
       setDrillsLoading(false);
     }
-  }, [cefrLevel, interests, lesson]);
+  }, [cefrLevel, interests, isHydrated, lesson]);
 
   useEffect(() => {
-    if (discoveryMode) void loadDiscovery();
+    if (isHydrated && discoveryMode) void loadDiscovery();
   }, [discoveryMode, loadDiscovery]);
 
   useEffect(() => {
-    if (step === 2 && !lesson) void loadLesson();
+    if (isHydrated && step === 2 && !lesson) void loadLesson();
   }, [lesson, loadLesson, step]);
 
   useEffect(() => {
-    if (step === 3 && drills.length === 0) void loadDrills();
+    if (isHydrated && step === 3 && drills.length === 0) void loadDrills();
   }, [drills.length, loadDrills, step]);
 
   useEffect(() => {
-    setRevealed(false);
-  }, [currentItem?.key]);
+    if (!isHydrated) return;
+    if (previousQueueKey.current === null) {
+      previousQueueKey.current = currentItem?.key ?? "";
+      if (session.startedAt === 0) {
+        updateSessionStateField(setSession, "startedAt", Date.now());
+      }
+      return;
+    }
+    if (previousQueueKey.current !== (currentItem?.key ?? "")) {
+      previousQueueKey.current = currentItem?.key ?? "";
+      setRevealed(false);
+    }
+  }, [
+    currentItem?.key,
+    isHydrated,
+    session.startedAt,
+    setRevealed,
+    setSession,
+  ]);
 
   async function rateCurrentCard(rating: ReviewRating) {
     if (!currentItem || reviewBusy) return;
@@ -236,7 +340,7 @@ export function SessionWorkspace({
     try {
       const durationS = Math.max(
         0,
-        Math.floor((Date.now() - sessionStartedAt.current) / 1000),
+        Math.floor((Date.now() - session.startedAt) / 1000),
       );
       const body =
         currentItem.kind === "due"
@@ -378,7 +482,7 @@ export function SessionWorkspace({
             cefrLevel: drill.cefrLevel,
             duration_s: Math.max(
               0,
-              Math.floor((Date.now() - sessionStartedAt.current) / 1000),
+              Math.floor((Date.now() - session.startedAt) / 1000),
             ),
           }),
         },
@@ -422,7 +526,7 @@ export function SessionWorkspace({
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-4 pb-10 pt-6 sm:px-7 sm:pt-10">
+    <main className="animate-view-enter mx-auto max-w-5xl px-4 pb-10 pt-6 sm:px-7 sm:pt-10">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm text-zinc-400">Un parcours guidé, sans détour</p>
@@ -615,6 +719,7 @@ export function SessionWorkspace({
                             key={option}
                             type="button"
                             disabled={quizScore !== null}
+                            aria-pressed={answers[questionIndex] === optionIndex}
                             onClick={() =>
                               setAnswers((current) => {
                                 const next = [...current];
@@ -622,7 +727,7 @@ export function SessionWorkspace({
                                 return next;
                               })
                             }
-                            className={`min-h-11 rounded-xl border px-3 py-2 text-left text-sm transition ${
+                            className={`min-h-11 rounded-xl border px-3 py-2 text-left text-sm transition-all duration-150 active:scale-[0.985] ${
                               answers[questionIndex] === optionIndex
                                 ? "border-violet-200/40 bg-violet-200/[0.08] text-violet-100"
                                 : "border-white/[0.08] text-zinc-400 hover:bg-white/[0.04]"

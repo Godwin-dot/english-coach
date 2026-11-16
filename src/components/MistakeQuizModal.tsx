@@ -275,7 +275,7 @@ export function MistakeQuizModal({
                           return next;
                         })
                       }
-                      className={`min-h-11 w-full rounded-xl border px-3 py-2 text-left text-sm leading-5 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200 disabled:cursor-default ${
+                      className={`min-h-11 w-full rounded-xl border px-3 py-2 text-left text-sm leading-5 transition-all duration-150 active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200 disabled:cursor-default ${
                         isCorrect
                           ? "border-emerald-300/35 bg-emerald-300/[0.08] text-emerald-100"
                           : isIncorrect

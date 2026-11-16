@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import type { CEFRLevel } from "@/schemas/lesson";
 import type { ChatMessageItem } from "@/schemas/chat";
+import { updateSessionStateField, useSessionState } from "@/hooks/useSessionState";
 
 const scenarios = [
   {
@@ -58,6 +60,16 @@ type ThreadEntry = {
   translation?: string;
 };
 
+type ChatSessionState = {
+  selectedLevel: CEFRLevel;
+  scenario: string;
+  sessionId: string | null;
+  thread: ThreadEntry[];
+  draft: string;
+  scores: number[];
+  sessionStartedAt: number;
+};
+
 type RecognitionResult = { readonly transcript: string };
 type RecognitionEvent = { readonly results: ArrayLike<RecognitionResult> };
 type Recognition = {
@@ -105,17 +117,55 @@ export function ChatWorkspace({
   cefrLevel: CEFRLevel;
   hasProviderKey: boolean;
 }) {
-  const [selectedLevel, setSelectedLevel] = useState<CEFRLevel>(cefrLevel);
-  const [scenario, setScenario] = useState("");
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [thread, setThread] = useState<ThreadEntry[]>([]);
-  const [draft, setDraft] = useState("");
-  const [scores, setScores] = useState<number[]>([]);
+  const [session, setSession, isHydrated] = useSessionState<ChatSessionState>(
+    "english-coach:chat:v1",
+    {
+      selectedLevel: cefrLevel,
+      scenario: "",
+      sessionId: null,
+      thread: [],
+      draft: "",
+      scores: [],
+      sessionStartedAt: 0,
+    },
+  );
+  const {
+    selectedLevel,
+    scenario,
+    sessionId,
+    thread,
+    draft,
+    scores,
+    sessionStartedAt,
+  } = session;
+  const setSelectedLevel: Dispatch<SetStateAction<CEFRLevel>> = useCallback(
+    (update) => updateSessionStateField(setSession, "selectedLevel", update),
+    [setSession],
+  );
+  const setScenario: Dispatch<SetStateAction<string>> = useCallback(
+    (update) => updateSessionStateField(setSession, "scenario", update),
+    [setSession],
+  );
+  const setSessionId: Dispatch<SetStateAction<string | null>> = useCallback(
+    (update) => updateSessionStateField(setSession, "sessionId", update),
+    [setSession],
+  );
+  const setThread: Dispatch<SetStateAction<ThreadEntry[]>> = useCallback(
+    (update) => updateSessionStateField(setSession, "thread", update),
+    [setSession],
+  );
+  const setDraft: Dispatch<SetStateAction<string>> = useCallback(
+    (update) => updateSessionStateField(setSession, "draft", update),
+    [setSession],
+  );
+  const setScores: Dispatch<SetStateAction<number[]>> = useCallback(
+    (update) => updateSessionStateField(setSession, "scores", update),
+    [setSession],
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [microphoneSupported, setMicrophoneSupported] = useState(false);
   const [listening, setListening] = useState(false);
-  const startedAt = useRef(0);
   const recognitionRef = useRef<Recognition | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -138,6 +188,7 @@ export function ChatWorkspace({
   }, [thread, busy]);
 
   function startConversation() {
+    if (!isHydrated) return;
     const selectedScenario = scenario.trim();
     if (selectedScenario.length < 2) {
       setError("Choisissez un scénario ou saisissez un thème (2 caractères minimum).");
@@ -159,13 +210,14 @@ export function ChatWorkspace({
     ]);
     setScores([]);
     setDraft("");
+    updateSessionStateField(setSession, "sessionStartedAt", Date.now());
     setError("");
-    startedAt.current = Date.now();
   }
 
   async function sendMessage() {
     const content = draft.trim();
     if (
+      !isHydrated ||
       !content ||
       !sessionId ||
       busy ||
@@ -194,7 +246,7 @@ export function ChatWorkspace({
           sessionId,
           duration_s: Math.max(
             0,
-            Math.floor((Date.now() - startedAt.current) / 1000),
+            Math.floor((Date.now() - sessionStartedAt) / 1000),
           ),
         }),
       });
@@ -258,7 +310,7 @@ export function ChatWorkspace({
             lastUserMessage: userMessages.at(-1)?.content,
             duration_s: Math.max(
               0,
-              Math.floor((Date.now() - startedAt.current) / 1000),
+              Math.floor((Date.now() - sessionStartedAt) / 1000),
             ),
           }),
         });
@@ -280,6 +332,7 @@ export function ChatWorkspace({
     setThread([]);
     setScores([]);
     setDraft("");
+    updateSessionStateField(setSession, "sessionStartedAt", 0);
     setError("");
   }
 
@@ -328,7 +381,7 @@ export function ChatWorkspace({
   const exchangeCount = thread.filter(({ role }) => role === "user").length;
 
   return (
-    <main className="mx-auto w-full max-w-5xl min-w-0 px-4 pb-10 pt-6 sm:px-7 sm:pt-9">
+    <main className="animate-view-enter mx-auto w-full max-w-5xl min-w-0 px-4 pb-10 pt-6 sm:px-7 sm:pt-9">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm text-zinc-400">Expression spontanée</p>
@@ -425,7 +478,8 @@ export function ChatWorkspace({
           <button
             type="button"
             onClick={startConversation}
-            className="mt-5 inline-flex min-h-12 items-center justify-center rounded-full bg-white px-6 text-sm font-semibold text-zinc-950 transition hover:bg-zinc-200 active:scale-[0.98]"
+            disabled={!isHydrated}
+            className="mt-5 inline-flex min-h-12 items-center justify-center rounded-full bg-white px-6 text-sm font-semibold text-zinc-950 transition hover:bg-zinc-200 active:scale-[0.985] disabled:opacity-50"
           >
             Démarrer l’échange <span aria-hidden="true" className="ml-2">→</span>
           </button>
@@ -446,7 +500,7 @@ export function ChatWorkspace({
               disabled={busy}
               className="inline-flex min-h-11 shrink-0 items-center rounded-full border border-white/[0.1] bg-white/[0.035] px-4 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Réinitialiser l’échange
+              Nouvel échange
             </button>
           </header>
 
