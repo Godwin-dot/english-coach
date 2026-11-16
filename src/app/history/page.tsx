@@ -2,6 +2,7 @@ import { AppShell } from "@/components/AppShell";
 import { getReviewableCardCount } from "@/domain/cards";
 import { getPublicLLMConfig } from "@/domain/llm-config";
 import { getFullHistory } from "@/domain/history";
+import { getTopMistakePatterns } from "@/domain/mistakes";
 import { getAppSettings } from "@/domain/settings";
 import { isPasswordAuthEnabled } from "@/lib/auth";
 import { HistoryWorkspace } from "./HistoryWorkspace";
@@ -20,7 +21,10 @@ export default function HistoryPage() {
       hasProviderKey={llmConfig.hasGeminiKey || llmConfig.hasOpenrouterKey}
       passwordAuthEnabled={isPasswordAuthEnabled()}
     >
-      <HistoryWorkspace history={getFullHistory()} />
+      <HistoryWorkspace
+        history={getFullHistory()}
+        initialPatterns={getTopMistakePatterns()}
+      />
     </AppShell>
   );
 }

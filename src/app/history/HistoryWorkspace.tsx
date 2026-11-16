@@ -7,6 +7,8 @@ import type {
   DrillHistoryEntry,
   HistoryCard,
 } from "@/domain/history";
+import type { MistakePattern } from "@/domain/mistakes";
+import { MistakeQuizModal } from "@/components/MistakeQuizModal";
 import type { lessons, mistakes } from "@/db/schema";
 
 type LessonEntry = typeof lessons.$inferSelect;
@@ -58,7 +60,17 @@ function dateLabel(card: HistoryCard) {
     : `Prochaine révision : ${formatDate(card.due)}`;
 }
 
-export function HistoryWorkspace({ history }: { history: FullHistory }) {
+function normalizedCategory(value: string | null | undefined) {
+  return (value?.trim().replace(/\s+/gu, " ") || "Général").toLocaleLowerCase("fr");
+}
+
+export function HistoryWorkspace({
+  history,
+  initialPatterns,
+}: {
+  history: FullHistory;
+  initialPatterns: MistakePattern[];
+}) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<HistoryTab>("vocabulary");
   const [search, setSearch] = useState("");
@@ -69,18 +81,36 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
   const [mistakeFilter, setMistakeFilter] = useState("");
   const [allCards, setAllCards] = useState(history.allCards);
   const [allLessons, setAllLessons] = useState(history.allLessons);
+  const [allMistakes, setAllMistakes] = useState(history.allMistakes);
+  const [topPatterns, setTopPatterns] = useState(initialPatterns);
+  const [quizOpen, setQuizOpen] = useState(false);
+  const [quizCategory, setQuizCategory] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{
-    kind: "card" | "lesson";
+    kind: "card" | "lesson" | "mistake";
     id: number;
   } | null>(null);
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const confirmationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handledInitialQuery = useRef(false);
 
   useEffect(() => {
     setAllCards(history.allCards);
     setAllLessons(history.allLessons);
-  }, [history.allCards, history.allLessons]);
+    setAllMistakes(history.allMistakes);
+    setTopPatterns(initialPatterns);
+  }, [history.allCards, history.allLessons, history.allMistakes, initialPatterns]);
+
+  useEffect(() => {
+    if (handledInitialQuery.current) return;
+    handledInitialQuery.current = true;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "lessons") setActiveTab("lessons");
+    if (params.get("quiz") === "top" && initialPatterns.length > 0) {
+      setQuizCategory(initialPatterns[0].category);
+      setQuizOpen(true);
+    }
+  }, [initialPatterns]);
 
   useEffect(
     () => () => {
@@ -108,9 +138,9 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
   const filteredMistakes = useMemo(() => {
     const query = mistakeFilter.trim().toLocaleLowerCase("fr");
     if (!query) {
-      return history.allMistakes;
+      return allMistakes;
     }
-    return history.allMistakes.filter((mistake) =>
+    return allMistakes.filter((mistake) =>
       [
         mistake.userText,
         mistake.correction,
@@ -118,11 +148,11 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
         mistake.explanation ?? "",
       ].some((value) => value.toLocaleLowerCase("fr").includes(query)),
     );
-  }, [history.allMistakes, mistakeFilter]);
+  }, [allMistakes, mistakeFilter]);
 
   const activeCard = filteredCards[practiceIndex] ?? null;
 
-  async function deleteItem(kind: "card" | "lesson", id: number) {
+  async function deleteItem(kind: "card" | "lesson" | "mistake", id: number) {
     const key = `${kind}-${id}`;
     if (pendingDelete?.kind !== kind || pendingDelete.id !== id) {
       if (confirmationTimer.current) clearTimeout(confirmationTimer.current);
@@ -138,7 +168,9 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
     setDeletingKey(key);
     setDeleteError("");
     try {
-      const response = await fetch(`/api/${kind === "card" ? "cards" : "lessons"}/${id}`, {
+      const collection =
+        kind === "card" ? "cards" : kind === "lesson" ? "lessons" : "mistakes";
+      const response = await fetch(`/api/${collection}/${id}`, {
         method: "DELETE",
       });
       const body: unknown = await response.json().catch(() => null);
@@ -156,8 +188,29 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
       if (kind === "card") {
         setAllCards((current) => current.filter((card) => card.id !== id));
         setPracticeIndex(0);
-      } else {
+      } else if (kind === "lesson") {
         setAllLessons((current) => current.filter((lesson) => lesson.id !== id));
+      } else {
+        const deleted = allMistakes.find((mistake) => mistake.id === id);
+        setAllMistakes((current) => current.filter((mistake) => mistake.id !== id));
+        if (deleted) {
+          const key = normalizedCategory(deleted.category);
+          setTopPatterns((current) =>
+            current.flatMap((pattern) => {
+              if (normalizedCategory(pattern.category) !== key) return [pattern];
+              const count = pattern.count - 1;
+              return count > 0
+                ? [
+                    {
+                      ...pattern,
+                      count,
+                      examples: pattern.examples.filter((example) => example.id !== id),
+                    },
+                  ]
+                : [];
+            }),
+          );
+        }
       }
       router.refresh();
     } catch (caught) {
@@ -203,7 +256,7 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
             [`${allCards.length} cartes`, "text-amber-100"],
             [`${history.drillHistory.length} traductions`, "text-violet-100"],
             [`${allLessons.length} leçons`, "text-emerald-100"],
-            [`${history.allMistakes.length} erreurs`, "text-rose-100"],
+            [`${allMistakes.length} erreurs`, "text-rose-100"],
           ].map(([label, color]) => (
             <span
               key={label}
@@ -488,6 +541,87 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
       ) : null}
 
       {activeTab === "lessons" ? (
+        <>
+        <section className="mb-3 rounded-3xl border border-amber-200/[0.12] bg-[#111114] p-5 sm:p-6">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-amber-100">Remédiation personnalisée</p>
+              <h2 className="mt-1 font-serif text-2xl text-white">
+                Tes pièges les plus fréquents
+              </h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                Deux exemples récents par catégorie pour cibler les erreurs qui reviennent.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setQuizCategory(null);
+                setQuizOpen(true);
+              }}
+              disabled={allMistakes.length === 0}
+              className="inline-flex min-h-11 items-center rounded-full bg-white px-4 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Quiz global · 4 questions
+            </button>
+          </div>
+          {topPatterns.length === 0 ? (
+            <p className="mt-5 rounded-2xl border border-white/[0.06] bg-black/20 p-4 text-sm text-zinc-400">
+              Les erreurs relevées pendant vos exercices apparaîtront ici.
+            </p>
+          ) : (
+            <div className="mt-5 divide-y divide-white/[0.07]">
+              {topPatterns.map((pattern) => (
+                <article
+                  key={normalizedCategory(pattern.category)}
+                  className="flex min-w-0 flex-col gap-4 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="break-words text-base font-semibold text-zinc-100">
+                        {pattern.category}
+                      </h3>
+                      <span className="rounded-full border border-amber-200/15 bg-amber-200/[0.06] px-2.5 py-1 text-xs tabular-nums text-amber-100">
+                        {pattern.count} occurrence{pattern.count === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {pattern.examples.map((example) => (
+                        <div
+                          key={example.id}
+                          className="rounded-xl border border-white/[0.06] bg-black/15 px-3 py-2.5"
+                        >
+                          <p className="break-words text-sm text-rose-100">
+                            {example.user_text}
+                          </p>
+                          <p className="mt-1 break-words text-sm text-emerald-100">
+                            {example.correction}
+                          </p>
+                          {example.explanation ? (
+                            <p className="mt-1 break-words text-xs leading-5 text-zinc-400">
+                              {example.explanation}
+                            </p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuizCategory(pattern.category);
+                      setQuizOpen(true);
+                    }}
+                    className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.04] px-4 text-sm text-zinc-100 transition hover:bg-white/[0.09] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
+                  >
+                    Lancer un mini-quiz (4 questions)
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
         <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <section className="min-w-0 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-6">
             <h2 className="text-base font-semibold text-white">Leçons sauvegardées</h2>
@@ -571,7 +705,11 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
                         <span className="rounded-full border border-amber-200/[0.1] px-2.5 py-1 text-[11px] text-amber-100">
                           {mistake.category}
                         </span>
-                      ) : null}
+                      ) : (
+                        <span className="rounded-full border border-amber-200/[0.1] px-2.5 py-1 text-[11px] text-amber-100">
+                          Général
+                        </span>
+                      )}
                     </div>
                     <p className="mt-2 break-words text-sm text-emerald-200">
                       {mistake.correction}
@@ -581,16 +719,36 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
                         {mistake.explanation}
                       </p>
                     ) : null}
-                    <time className="mt-2 block text-[11px] text-zinc-500" dateTime={mistake.createdAt}>
-                      {formatDateTime(mistake.createdAt)}
-                    </time>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                      <time className="text-[11px] text-zinc-500" dateTime={mistake.createdAt}>
+                        {formatDateTime(mistake.createdAt)}
+                      </time>
+                      <button
+                        type="button"
+                        onClick={() => void deleteItem("mistake", mistake.id)}
+                        disabled={deletingKey === `mistake-${mistake.id}`}
+                        className="min-h-11 rounded-full border border-rose-200/[0.12] px-3 text-xs text-rose-200 transition hover:bg-rose-300/[0.08] disabled:opacity-50"
+                      >
+                        {deletingKey === `mistake-${mistake.id}`
+                          ? "Suppression…"
+                          : pendingDelete?.kind === "mistake" && pendingDelete.id === mistake.id
+                            ? "Supprimer ?"
+                            : "Supprimer"}
+                      </button>
+                    </div>
                   </article>
                 ))
               )}
             </div>
           </section>
         </div>
+        </>
       ) : null}
+      <MistakeQuizModal
+        isOpen={quizOpen}
+        category={quizCategory}
+        onClose={() => setQuizOpen(false)}
+      />
     </main>
   );
 }

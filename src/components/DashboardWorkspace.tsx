@@ -185,6 +185,25 @@ export function DashboardWorkspace({
         </span>
       </Link>
 
+      {mistakeCount >= 2 ? (
+        <Link
+          href="/history?tab=lessons&quiz=top"
+          className="group mt-3 flex min-h-16 flex-wrap items-center justify-between gap-3 rounded-3xl border border-rose-200/[0.12] bg-[#111114] px-5 py-4 transition-colors duration-150 hover:border-rose-200/25 hover:bg-white/[0.035] sm:px-7"
+        >
+          <span>
+            <span className="block text-sm font-medium text-rose-100">
+              Point de vigilance
+            </span>
+            <span className="mt-1 block text-sm text-zinc-400">
+              {mistakeCount} erreurs enregistrées : révisez les pièges qui reviennent.
+            </span>
+          </span>
+          <span className="ml-auto inline-flex min-h-11 items-center rounded-full border border-white/[0.1] bg-white/[0.05] px-4 text-sm text-zinc-100 transition group-hover:bg-white/[0.1]">
+            Quiz ciblé <span aria-hidden="true" className="ml-2">→</span>
+          </span>
+        </Link>
+      ) : null}
+
       <section
         aria-labelledby="weekly-progress-title"
         className="mt-3 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7"
