@@ -68,7 +68,7 @@ export function buildEvaluateDrillPrompts({
       "Give a score from 0 to 10 in increments of 0.5, an idiomatic reference translation, one valid alternative, and clear constructive feedback in French.",
       "Only add detected_mistakes for genuine errors or awkward phrasing; return an empty array when the translation is correct and natural.",
       "For each detected mistake, quote a short exact fragment from the learner's text, provide its correction, category, and a concise French explanation.",
-      "In missed_vocab, extract only English words or short expressions of 1 to 3 words that the learner omitted, misspelled, or replaced with a false friend. Never use a complete sentence as a term; give its French meaning, a corrected English context_sentence, and a short French note. Return at most 3 entries and [] when no specific vocabulary item was missed.",
+      "In missed_vocab, extract only an isolated English word or a very short expression of 1 to 2 words that the learner omitted, misspelled, or replaced with a false friend (for example: 'rely on', 'schedule', 'accurate'). Never include a clause or sentence fragment as a term. Give its French meaning, a corrected English context_sentence, and a short French note. Return at most 3 entries and [] when no specific vocabulary item was missed.",
     ].join(" "),
     userPrompt: JSON.stringify({
       frenchSentence,
@@ -91,7 +91,7 @@ export function buildEvaluateDrillPrompts({
         ],
         missed_vocab: [
           {
-            term: "One missed English word or short expression (1-3 words; never a sentence)",
+            term: "One missed isolated English word or short expression (1-2 words; never a clause or sentence)",
             translation: "French meaning",
             context_sentence: "Corrected complete English example sentence using the term",
             note_fr: "Brief French note about the mistake",

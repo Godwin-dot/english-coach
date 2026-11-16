@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   CardNotFoundError,
-  getContinuousReviewCards,
+  getRemainingDueCards,
   getDueCards,
+  InvalidDiscoveredVocabError,
+  saveAndGradeDiscoveredCard,
   submitCardReview,
 } from "@/domain/cards";
 import { SubmitReviewInputSchema } from "@/schemas/card";
@@ -11,7 +13,10 @@ export const dynamic = "force-dynamic";
 
 export function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  if (searchParams.get("mode") === "continuous") {
+  if (
+    searchParams.get("mode") === "due" ||
+    searchParams.get("mode") === "continuous"
+  ) {
     const rawExcludedIds = searchParams.get("excludeIds") ?? "";
     const excludedIds = rawExcludedIds
       ? rawExcludedIds.split(",").map((value) => Number(value))
@@ -27,7 +32,7 @@ export function GET(request: NextRequest) {
     }
 
     return NextResponse.json(
-      getContinuousReviewCards(excludedIds),
+      getRemainingDueCards(excludedIds),
       { headers: { "Cache-Control": "no-store" } },
     );
   }
@@ -57,6 +62,16 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    if ("discoveryCard" in parsed.data) {
+      return NextResponse.json(
+        saveAndGradeDiscoveredCard({
+          ...parsed.data.discoveryCard,
+          rating: parsed.data.rating,
+          durationS: parsed.data.duration_s,
+        }),
+      );
+    }
+
     return NextResponse.json(
       submitCardReview(
         parsed.data.cardId,
@@ -68,6 +83,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof CardNotFoundError) {
       return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+    if (error instanceof InvalidDiscoveredVocabError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
     throw error;
   }

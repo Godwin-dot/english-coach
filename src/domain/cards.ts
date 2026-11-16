@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   and,
   asc,
@@ -6,7 +7,6 @@ import {
   gte,
   lt,
   lte,
-  gt,
   notInArray,
   sql,
 } from "drizzle-orm";
@@ -17,10 +17,19 @@ import type {
   SubmitReviewInput,
 } from "@/schemas/card";
 import {
+  DiscoveredVocabBatchSchema,
+  type DiscoveredVocabItem,
+} from "@/schemas/card";
+import { getAppSettings } from "@/domain/settings";
+import { LLMProviderError } from "@/llm/errors";
+import { getLLMProvider } from "@/llm/provider";
+import { buildDiscoverVocabPrompts } from "@/llm/prompts/vocab";
+import {
   createInitialFSRSCard,
   previewNextIntervals,
   scheduleCardReview,
   type ReviewIntervals,
+  type ReviewRating,
 } from "@/srs";
 
 type CardRow = typeof cards.$inferSelect;
@@ -43,6 +52,12 @@ export type MissedVocabItem = {
   note_fr: string;
 };
 
+export type DiscoveryCard = DiscoveredVocabItem & {
+  discoveryId: string;
+  isDiscovery: true;
+  intervals: ReviewIntervals;
+};
+
 export class CardNotFoundError extends Error {
   constructor() {
     super("Carte introuvable.");
@@ -54,6 +69,13 @@ export class SourceLessonNotFoundError extends Error {
   constructor() {
     super("Leçon source introuvable.");
     this.name = "SourceLessonNotFoundError";
+  }
+}
+
+export class InvalidDiscoveredVocabError extends Error {
+  constructor() {
+    super("Un mot de découverte doit contenir au maximum deux mots.");
+    this.name = "InvalidDiscoveredVocabError";
   }
 }
 
@@ -184,7 +206,12 @@ export function addMissedVocabCards(items: MissedVocabItem[]): string[] {
       const term = item.term.trim();
       const normalizedTerm = term.toLocaleLowerCase("en");
       const wordCount = term.split(/\s+/u).filter(Boolean).length;
-      if (!term || wordCount > 4 || seenTerms.has(normalizedTerm)) {
+      if (
+        !term ||
+        wordCount > 2 ||
+        /[.!?]$/u.test(term) ||
+        seenTerms.has(normalizedTerm)
+      ) {
         continue;
       }
       seenTerms.add(normalizedTerm);
@@ -224,7 +251,6 @@ export function addMissedVocabCards(items: MissedVocabItem[]): string[] {
 export function getDueCards(now = new Date()): {
   cards: ReviewCardView[];
   totalDueCount: number;
-  totalCardCount: number;
 } {
   const reviewLimit = readIntegerSetting("daily_review_cap", 15, 0);
   const dueWhere = lte(cards.due, now.toISOString());
@@ -244,22 +270,19 @@ export function getDueCards(now = new Date()): {
       intervals: previewNextIntervals(row.fsrsStateJson, now),
     })),
     totalDueCount,
-    totalCardCount: db.select({ value: count() }).from(cards).get()?.value ?? 0,
   };
 }
 
-export type ContinuousReviewBatch = {
+export type RemainingDueBatch = {
   cards: ReviewCardView[];
-  mode: "due" | "continuous";
-  dueRemaining: number;
-  totalCardCount: number;
+  remainingDueCount: number;
 };
 
-export function getContinuousReviewCards(
+export function getRemainingDueCards(
   excludeIds: number[],
   now = new Date(),
   limit = 10,
-): ContinuousReviewBatch {
+): RemainingDueBatch {
   const nowIso = now.toISOString();
   const uniqueExcluded = [...new Set(excludeIds)];
   const notExcluded =
@@ -268,10 +291,8 @@ export function getContinuousReviewCards(
     lte(cards.due, nowIso),
     ...(notExcluded ? [notExcluded] : []),
   );
-  const dueRemaining =
+  const remainingDueCount =
     db.select({ value: count() }).from(cards).where(dueWhere).get()?.value ?? 0;
-  const totalCardCount =
-    db.select({ value: count() }).from(cards).get()?.value ?? 0;
   const stability = sql<number>`coalesce(json_extract(${cards.fsrsStateJson}, '$.stability'), 0)`;
   const dueRows = db
     .select()
@@ -281,39 +302,91 @@ export function getContinuousReviewCards(
     .limit(limit)
     .all();
 
-  if (dueRows.length > 0) {
-    return {
-      cards: dueRows.map((row) => ({
-        ...toCardView(row),
-        intervals: previewNextIntervals(row.fsrsStateJson, now),
-      })),
-      mode: "due",
-      dueRemaining,
-      totalCardCount,
-    };
-  }
-
-  const notDueWhere = and(
-    gt(cards.due, nowIso),
-    ...(notExcluded ? [notExcluded] : []),
-  );
-  const continuousRows = db
-    .select()
-    .from(cards)
-    .where(notDueWhere)
-    .orderBy(asc(cards.due), asc(stability), asc(cards.id))
-    .limit(limit)
-    .all();
-
   return {
-    cards: continuousRows.map((row) => ({
+    cards: dueRows.map((row) => ({
       ...toCardView(row),
       intervals: previewNextIntervals(row.fsrsStateJson, now),
     })),
-    mode: "continuous",
-    dueRemaining,
-    totalCardCount,
+    remainingDueCount,
   };
+}
+
+export async function generateNewVocabBatch(
+  count = 6,
+  sessionExcludedTerms: string[] = [],
+): Promise<DiscoveryCard[]> {
+  const requestedCount = Math.min(Math.max(Math.floor(count), 4), 8);
+  const appSettings = getAppSettings();
+  const allExistingTerms = db
+    .select({ term: cards.term })
+    .from(cards)
+    .orderBy(asc(cards.createdAt), asc(cards.id))
+    .all()
+    .map(({ term }) => term);
+  const promptExcludedTerms = allExistingTerms.slice(-150);
+  const blockedTerms = new Set(
+    [...allExistingTerms, ...sessionExcludedTerms].map((term) =>
+      term.trim().toLocaleLowerCase("en"),
+    ),
+  );
+  const provider = getLLMProvider();
+  let promptExcluded = [
+    ...new Set(
+      [...promptExcludedTerms, ...sessionExcludedTerms].map((term) =>
+        term.trim(),
+      ),
+    ),
+  ];
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const prompts = buildDiscoverVocabPrompts({
+      count: requestedCount,
+      cefrLevel: appSettings.targetLevel,
+      interests: appSettings.interests,
+      excludedTerms: promptExcluded,
+    });
+    const generated = await provider.generateStructuredJSON(
+      prompts.systemPrompt,
+      prompts.userPrompt,
+      DiscoveredVocabBatchSchema,
+    );
+    const seenTerms = new Set(blockedTerms);
+    const uniqueWords = generated.words.filter(({ term }) => {
+      const normalizedTerm = term.toLocaleLowerCase("en");
+      if (
+        term.split(/\s+/u).length > 2 ||
+        /[.!?]$/u.test(term) ||
+        seenTerms.has(normalizedTerm)
+      ) {
+        return false;
+      }
+      seenTerms.add(normalizedTerm);
+      return true;
+    });
+
+    if (uniqueWords.length >= 4) {
+      return uniqueWords.slice(0, requestedCount).map((word) => {
+        const initialState = createInitialFSRSCard();
+        return {
+          ...word,
+          discoveryId: randomUUID(),
+          isDiscovery: true,
+          intervals: previewNextIntervals(initialState.fsrsStateJson),
+        };
+      });
+    }
+
+    promptExcluded = [
+      ...new Set([
+        ...promptExcluded,
+        ...generated.words.map(({ term }) => term),
+      ]),
+    ];
+  }
+
+  throw new LLMProviderError(
+    "Impossible de trouver assez de nouveaux mots non présents dans votre deck. Réessayez.",
+  );
 }
 
 export function getReviewableCardCount(now = new Date()): number {
@@ -331,7 +404,7 @@ export function submitCardReview(
   cardId: number,
   rating: SubmitReviewInput["rating"],
   durationS?: number,
-  mode: SubmitReviewInput["mode"] = "due",
+  mode: "due" | "continuous" = "due",
 ): ReviewCardView {
   const now = new Date();
   const reviewedAt = now.toISOString();
@@ -398,6 +471,104 @@ export function submitCardReview(
     return {
       ...toCardView(updatedCard),
       intervals: previewNextIntervals(updatedCard.fsrsStateJson, now),
+    };
+  });
+}
+
+export function saveAndGradeDiscoveredCard({
+  rating,
+  durationS,
+  ...word
+}: DiscoveredVocabItem & {
+  rating: ReviewRating;
+  durationS?: number;
+}): { status: "created" | "already_exists"; card: ReviewCardView } {
+  const term = word.term.trim();
+  if (term.split(/\s+/u).length > 2 || /[.!?]$/u.test(term)) {
+    throw new InvalidDiscoveredVocabError();
+  }
+
+  const now = new Date();
+  const createdAt = now.toISOString();
+
+  return db.transaction((transaction) => {
+    const existing = getMatchingCard(term, transaction);
+    if (existing) {
+      transaction
+        .insert(activityLog)
+        .values({
+          kind: "card_practice",
+          refId: existing.id,
+          rating,
+          durationS: durationS ?? null,
+          createdAt,
+        })
+        .run();
+      return {
+        status: "already_exists",
+        card: {
+          ...toCardView(existing),
+          intervals: previewNextIntervals(existing.fsrsStateJson, now),
+        },
+      };
+    }
+
+    const initialState = createInitialFSRSCard(now);
+    const scheduled = scheduleCardReview(
+      initialState.fsrsStateJson,
+      rating,
+      now,
+    );
+    const inserted = transaction
+      .insert(cards)
+      .values({
+        language: "en",
+        term,
+        translation: word.translation,
+        phonetic: null,
+        exampleSentence: word.example_sentence,
+        exampleTranslation: word.example_translation,
+        mnemonic: word.mnemonic || null,
+        sourceLessonId: null,
+        due: scheduled.due,
+        fsrsStateJson: scheduled.fsrsStateJson,
+        createdAt,
+      })
+      .onConflictDoNothing()
+      .returning()
+      .get();
+
+    if (!inserted) {
+      const racedCard = getMatchingCard(term, transaction);
+      if (!racedCard) {
+        throw new Error("Le nouveau mot n’a pas pu être enregistré.");
+      }
+      return {
+        status: "already_exists",
+        card: {
+          ...toCardView(racedCard),
+          intervals: previewNextIntervals(racedCard.fsrsStateJson, now),
+        },
+      };
+    }
+
+    transaction
+      .insert(activityLog)
+      .values({
+        kind: "card_review",
+        refId: inserted.id,
+        rating,
+        durationS: durationS ?? null,
+        createdAt,
+      })
+      .run();
+
+    return {
+      status: "created",
+      card: {
+        ...toCardView(inserted),
+        intervals: previewNextIntervals(inserted.fsrsStateJson, now),
+      },
     };
   });
 }

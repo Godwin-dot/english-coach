@@ -2,18 +2,30 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReviewCardView } from "@/domain/cards";
-import type { ReviewRating } from "@/srs";
+import type { DiscoveryCard, ReviewCardView } from "@/domain/cards";
+import type { ReviewIntervals, ReviewRating } from "@/srs";
 
-type ReviewQueueCard = ReviewCardView & {
-  reviewMode: "due" | "continuous";
+type DueQueueItem = {
+  key: string;
+  isDiscovery: false;
+  data: ReviewCardView;
 };
 
-type ContinuousBatch = {
+type DiscoveryQueueItem = {
+  key: string;
+  isDiscovery: true;
+  data: DiscoveryCard;
+};
+
+type ReviewQueueItem = DueQueueItem | DiscoveryQueueItem;
+
+type DueBatch = {
   cards: ReviewCardView[];
-  mode: "due" | "continuous";
-  dueRemaining: number;
-  totalCardCount: number;
+  remainingDueCount: number;
+};
+
+type DiscoveryBatch = {
+  cards: DiscoveryCard[];
 };
 
 const ratingButtons: Array<{
@@ -110,21 +122,31 @@ function AudioButton({
   );
 }
 
+function makeDiscoveryQueueItem(data: DiscoveryCard): DiscoveryQueueItem {
+  return {
+    key: `discovery-${data.discoveryId}`,
+    isDiscovery: true,
+    data,
+  };
+}
+
 export function ReviewWorkspace({
   initialCards,
   totalDueCount,
-  totalCardCount,
 }: {
   initialCards: ReviewCardView[];
   totalDueCount: number;
-  totalCardCount: number;
 }) {
-  const [cards, setCards] = useState<ReviewQueueCard[]>(
-    initialCards.map((item) => ({ ...item, reviewMode: "due" })),
+  const [cards, setCards] = useState<ReviewQueueItem[]>(
+    initialCards.map((data) => ({
+      key: `due-${data.id}`,
+      isDiscovery: false,
+      data,
+    })),
   );
   const [reviewedCount, setReviewedCount] = useState(0);
+  const [processedCount, setProcessedCount] = useState(0);
   const [dueRemaining, setDueRemaining] = useState(totalDueCount);
-  const [continuousMode, setContinuousMode] = useState(totalDueCount === 0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sessionFinished, setSessionFinished] = useState(false);
   const [revealed, setRevealed] = useState(false);
@@ -132,13 +154,15 @@ export function ReviewWorkspace({
   const [error, setError] = useState("");
   const [accent, setAccent] = useState<"en-US" | "en-GB">("en-US");
   const startedAt = useRef(Date.now());
-  const reviewedIds = useRef(new Set<number>());
+  const seenDiscoveryTerms = useRef(new Set<string>());
   const loadingMoreRef = useRef(false);
-  const card = cards[0] ?? null;
-  const currentNumber = card ? reviewedCount + 1 : reviewedCount;
+  const queueItem = cards[0] ?? null;
+  const currentCard = queueItem?.data ?? null;
+  const discoveryMode = dueRemaining === 0;
+  const currentNumber = processedCount + 1;
 
   const loadNextBatch = useCallback(async () => {
-    if (loadingMoreRef.current || sessionFinished || totalCardCount === 0) {
+    if (loadingMoreRef.current || sessionFinished) {
       return;
     }
 
@@ -146,44 +170,76 @@ export function ReviewWorkspace({
     setLoadingMore(true);
     setError("");
 
-    async function requestBatch(excludeIds: number[]): Promise<ContinuousBatch> {
-      const query = new URLSearchParams({
-        mode: "continuous",
-        excludeIds: [...new Set(excludeIds)].join(","),
-      });
-      const response = await fetch(`/api/review?${query.toString()}`, {
+    try {
+      if (dueRemaining > 0) {
+        const queuedDueIds = cards.flatMap((item) =>
+          item.isDiscovery ? [] : [item.data.id],
+        );
+        const query = new URLSearchParams({
+          mode: "due",
+          excludeIds: [...new Set(queuedDueIds)].join(","),
+        });
+        const response = await fetch(`/api/review?${query.toString()}`, {
+          cache: "no-store",
+        });
+        const body: unknown = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(getErrorMessage(body));
+        }
+
+        const batch = body as DueBatch;
+        if (batch.cards.length) {
+          setCards((current) => {
+            const currentIds = new Set(
+              current.flatMap((item) =>
+                item.isDiscovery ? [] : [item.data.id],
+              ),
+            );
+            const additions = batch.cards
+              .filter(({ id }) => !currentIds.has(id))
+              .map(
+                (data): DueQueueItem => ({
+                  key: `due-${data.id}`,
+                  isDiscovery: false,
+                  data,
+                }),
+              );
+            return additions.length ? [...current, ...additions] : current;
+          });
+        } else if (queuedDueIds.length === 0) {
+          setDueRemaining(0);
+        }
+        return;
+      }
+
+      const excludeTerms = [...seenDiscoveryTerms.current].slice(-500);
+      const response = await fetch("/api/review/discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ excludeTerms }),
         cache: "no-store",
       });
       const body: unknown = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(getErrorMessage(body));
       }
-      return body as ContinuousBatch;
-    }
 
-    try {
-      const excluded = [
-        ...reviewedIds.current,
-        ...cards.map(({ id }) => id),
-      ];
-      let batch = await requestBatch(excluded);
-
-      if (!batch.cards.length && batch.totalCardCount > 0) {
-        reviewedIds.current.clear();
-        batch = await requestBatch(cards.map(({ id }) => id));
-      }
-
-      if (batch.cards.length) {
-        setCards((current) => {
-          const currentIds = new Set(current.map(({ id }) => id));
-          const additions = batch.cards
-            .filter(({ id }) => !currentIds.has(id))
-            .map((item) => ({ ...item, reviewMode: batch.mode }));
-          return additions.length ? [...current, ...additions] : current;
-        });
-        if (dueRemaining === 0) {
-          setContinuousMode(true);
+      const batch = body as DiscoveryBatch;
+      const additions = batch.cards.filter((item) => {
+        const term = item.term.trim().toLocaleLowerCase("en");
+        if (seenDiscoveryTerms.current.has(term)) {
+          return false;
         }
+        seenDiscoveryTerms.current.add(term);
+        return true;
+      });
+      if (additions.length) {
+        setCards((current) => [
+          ...current,
+          ...additions.map(makeDiscoveryQueueItem),
+        ]);
+      } else {
+        throw new Error("Aucun nouveau mot n’a été proposé. Réessayez.");
       }
     } catch (caught) {
       setError(
@@ -195,23 +251,23 @@ export function ReviewWorkspace({
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [cards, dueRemaining, sessionFinished, totalCardCount]);
+  }, [cards, dueRemaining, sessionFinished]);
 
   useEffect(() => {
-    if (cards.length < 2 && !sessionFinished && totalCardCount > 0) {
+    if (cards.length <= 2 && !sessionFinished) {
       void loadNextBatch();
     }
-  }, [cards.length, loadNextBatch, sessionFinished, totalCardCount]);
+  }, [cards.length, loadNextBatch, sessionFinished]);
 
   useEffect(() => {
     setRevealed(false);
     setError("");
     startedAt.current = Date.now();
-  }, [card?.id]);
+  }, [queueItem?.key]);
 
   const submitReview = useCallback(
     async (rating: ReviewRating) => {
-      if (!card || isSubmitting || !revealed) {
+      if (!queueItem || !currentCard || isSubmitting || !revealed) {
         return;
       }
 
@@ -223,29 +279,41 @@ export function ReviewWorkspace({
       );
 
       try {
+        const reviewBody = queueItem.isDiscovery
+          ? {
+              discoveryCard: {
+                term: queueItem.data.term,
+                translation: queueItem.data.translation,
+                part_of_speech: queueItem.data.part_of_speech,
+                example_sentence: queueItem.data.example_sentence,
+                example_translation: queueItem.data.example_translation,
+                mnemonic: queueItem.data.mnemonic,
+              },
+              rating,
+              duration_s: durationS,
+            }
+          : {
+              cardId: queueItem.data.id,
+              rating,
+              duration_s: durationS,
+              mode: "due",
+            };
         const response = await fetch("/api/review", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            cardId: card.id,
-            rating,
-            duration_s: durationS,
-            mode: card.reviewMode,
-          }),
+          body: JSON.stringify(reviewBody),
         });
         const body: unknown = await response.json().catch(() => null);
         if (!response.ok) {
           throw new Error(getErrorMessage(body));
         }
-        reviewedIds.current.add(card.id);
-        setCards((current) => current.filter((item) => item.id !== card.id));
-        setReviewedCount((current) => current + 1);
-        if (card.reviewMode === "due") {
+
+        if (!queueItem.isDiscovery) {
           setDueRemaining((current) => Math.max(current - 1, 0));
         }
-        if (dueRemaining <= (card.reviewMode === "due" ? 1 : 0)) {
-          setContinuousMode(true);
-        }
+        setCards((current) => current.filter((item) => item.key !== queueItem.key));
+        setReviewedCount((current) => current + 1);
+        setProcessedCount((current) => current + 1);
         setRevealed(false);
       } catch (caught) {
         setError(
@@ -257,8 +325,17 @@ export function ReviewWorkspace({
         setIsSubmitting(false);
       }
     },
-    [card, dueRemaining, isSubmitting, revealed],
+    [currentCard, isSubmitting, queueItem, revealed],
   );
+
+  const skipKnownWord = useCallback(() => {
+    if (!queueItem?.isDiscovery || isSubmitting) {
+      return;
+    }
+    setCards((current) => current.filter((item) => item.key !== queueItem.key));
+    setProcessedCount((current) => current + 1);
+    setRevealed(false);
+  }, [isSubmitting, queueItem]);
 
   useEffect(() => {
     function handleKeyboard(event: KeyboardEvent) {
@@ -271,7 +348,7 @@ export function ReviewWorkspace({
         return;
       }
 
-      if ((event.code === "Space" || event.key === "Enter") && !revealed && card) {
+      if ((event.code === "Space" || event.key === "Enter") && !revealed && currentCard) {
         event.preventDefault();
         setRevealed(true);
         return;
@@ -286,15 +363,13 @@ export function ReviewWorkspace({
 
     window.addEventListener("keydown", handleKeyboard);
     return () => window.removeEventListener("keydown", handleKeyboard);
-  }, [card, revealed, submitReview]);
+  }, [currentCard, revealed, submitReview]);
 
   function reportAudioUnavailable() {
     setError("La synthèse vocale n’est pas disponible dans ce navigateur.");
   }
 
-  if (sessionFinished || totalCardCount === 0) {
-    const isSessionComplete = sessionFinished && reviewedCount > 0;
-
+  if (sessionFinished) {
     return (
       <main className="mx-auto flex min-h-[calc(100vh-7rem)] max-w-5xl items-center px-4 py-10 sm:px-8">
         <section className="relative w-full overflow-hidden rounded-3xl border border-white/[0.08] bg-[#111114] px-6 py-10 text-center sm:px-12 sm:py-14">
@@ -304,45 +379,28 @@ export function ReviewWorkspace({
           />
           <div className="relative mx-auto max-w-xl">
             <span className="mx-auto grid size-14 place-items-center rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.06] text-2xl text-emerald-200">
-              {isSessionComplete ? "✓" : "✦"}
+              ✓
             </span>
             <p className="mt-6 text-sm font-medium text-emerald-200">
-              {isSessionComplete ? "Belle régularité" : "Révision FSRS"}
+              Belle régularité
             </p>
             <h1 className="mt-2 font-serif text-4xl tracking-[-0.05em] text-white sm:text-5xl">
-              {isSessionComplete
-                ? "Session terminée."
-                : totalDueCount
-                  ? "Votre limite du jour est atteinte."
-                  : "Tout est à jour."}
+              Session terminée.
             </h1>
             <p className="mx-auto mt-4 max-w-lg text-sm leading-7 text-zinc-400">
-              {isSessionComplete
-                ? `Vous avez travaillé ${reviewedCount} ${
-                    reviewedCount === 1 ? "carte" : "cartes"
-                  } dans cette session.`
-                : "Aucune carte n’est disponible pour le moment. Une nouvelle leçon est toujours une bonne occasion d’apprendre."}
+              Vous avez révisé {reviewedCount}{" "}
+              {reviewedCount === 1 ? "carte" : "cartes"} et passé{" "}
+              {processedCount - reviewedCount}{" "}
+              {processedCount - reviewedCount === 1 ? "mot" : "mots"}.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              {sessionFinished && totalCardCount > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    reviewedIds.current.clear();
-                    setSessionFinished(false);
-                    setContinuousMode(true);
-                  }}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition-colors duration-150 hover:bg-zinc-200 active:scale-[0.98]"
-                >
-                  Continuer à réviser <span aria-hidden="true">→</span>
-                </button>
-              ) : null}
-              <Link
-                href="/lesson"
+              <button
+                type="button"
+                onClick={() => setSessionFinished(false)}
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition-colors duration-150 hover:bg-zinc-200 active:scale-[0.98]"
               >
-                Découvrir de nouveaux mots <span aria-hidden="true">→</span>
-              </Link>
+                Continuer à réviser <span aria-hidden="true">→</span>
+              </button>
               <Link
                 href="/"
                 className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] px-5 text-sm font-medium text-zinc-200 transition-colors duration-150 hover:bg-white/[0.1] active:scale-[0.98]"
@@ -356,20 +414,51 @@ export function ReviewWorkspace({
     );
   }
 
-  if (!card) {
+  if (!queueItem || !currentCard) {
     return (
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
         <section className="rounded-3xl border border-white/[0.08] bg-[#111114] p-6 text-center sm:p-10">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-left">
+            <p className="text-sm font-medium text-amber-200/90">
+              {discoveryMode
+                ? "Nouveau vocabulaire · Découverte infinie"
+                : "Révisions espacées avec FSRS"}
+            </p>
+            <button
+              type="button"
+              onClick={() => setSessionFinished(true)}
+              className="inline-flex min-h-11 items-center rounded-full border border-white/[0.08] bg-white/[0.035] px-4 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.08] hover:text-white"
+            >
+              Terminer la session
+            </button>
+          </div>
+          <p className="mb-5 text-xs text-zinc-400">
+            Dues : <span className="text-white">{dueRemaining}</span>
+            <span className="mx-2 text-zinc-700">·</span>
+            Révisées : <span className="text-white">{reviewedCount}</span>
+          </p>
+          {discoveryMode ? (
+            <div className="mb-5 rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.045] px-4 py-3 text-sm text-emerald-100">
+              Cartes du jour terminées — préparation de nouveaux mots.
+            </div>
+          ) : null}
           <div
             role="status"
-            aria-label="Chargement des cartes suivantes"
+            aria-label={
+              discoveryMode
+                ? "Préparation de nouveaux mots"
+                : "Chargement des cartes dues"
+            }
             className="mx-auto max-w-sm animate-pulse space-y-3"
           >
             <div className="mx-auto h-3 w-32 rounded-full bg-white/[0.08]" />
             <div className="mx-auto h-8 w-56 rounded-full bg-white/[0.06]" />
           </div>
           <p className="mt-5 text-sm text-zinc-400">
-            {error || "Préparation des prochaines cartes…"}
+            {error ||
+              (discoveryMode
+                ? "Préparation de nouveaux mots…"
+                : "Chargement des cartes dues…")}
           </p>
           {error ? (
             <button
@@ -385,12 +474,28 @@ export function ReviewWorkspace({
     );
   }
 
+  const cardTerm = currentCard.term;
+  const cardTranslation = currentCard.translation;
+  const cardPhonetic = queueItem.isDiscovery
+    ? queueItem.data.part_of_speech
+    : queueItem.data.phonetic;
+  const cardExample = queueItem.isDiscovery
+    ? queueItem.data.example_sentence
+    : queueItem.data.exampleSentence;
+  const cardExampleTranslation = queueItem.isDiscovery
+    ? queueItem.data.example_translation
+    : queueItem.data.exampleTranslation;
+  const cardMnemonic = currentCard.mnemonic;
+  const intervals: ReviewIntervals = currentCard.intervals;
+
   return (
     <main className="mx-auto max-w-5xl px-4 pb-8 pt-8 sm:px-8 sm:pt-12">
       <header className="page-enter mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-amber-200/90">
-            Révisions espacées avec FSRS
+            {discoveryMode
+              ? "Nouveau vocabulaire · Découverte infinie"
+              : "Révisions espacées avec FSRS"}
           </p>
           <h1 className="mt-2 font-serif text-4xl tracking-[-0.05em] text-white sm:text-5xl">
             À vous de jouer.
@@ -424,25 +529,29 @@ export function ReviewWorkspace({
       <section aria-label="Progression de la session" className="mb-5">
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-xs">
           <p className="font-medium text-zinc-300">
-            Dues restantes : <span className="tabular-nums text-white">{dueRemaining}</span>
+            Dues :{" "}
+            <span className="tabular-nums text-white">{dueRemaining}</span>
             <span className="mx-2 text-zinc-700">·</span>
-            Révisées : <span className="tabular-nums text-white">{reviewedCount}</span>
+            Révisées :{" "}
+            <span className="tabular-nums text-white">{reviewedCount}</span>
           </p>
           <p className="text-zinc-500">
-            {continuousMode
-              ? `Mode continu · Carte ${currentNumber}`
+            {discoveryMode
+              ? `Découverte · Carte ${currentNumber}`
               : `Cartes dues · Carte ${currentNumber}`}
           </p>
         </div>
       </section>
 
-      {continuousMode ? (
+      {discoveryMode ? (
         <div className="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.045] px-4 py-3 text-sm text-emerald-100">
           <span>
-            Cartes du jour terminées — poursuite en révision continue
+            Cartes du jour terminées — place à la découverte de nouveaux mots.
           </span>
           {loadingMore ? (
-            <span className="text-xs text-emerald-100/70">Chargement…</span>
+            <span className="text-xs text-emerald-100/70">
+              Préparation de nouveaux mots…
+            </span>
           ) : null}
         </div>
       ) : null}
@@ -456,20 +565,20 @@ export function ReviewWorkspace({
             />
             <div className="relative flex items-center gap-3">
               <p className="text-xs font-medium text-zinc-400">
-                English
+                {queueItem.isDiscovery ? "Nouveau mot" : "English"}
               </p>
               <AudioButton
-                text={card.term}
+                text={cardTerm}
                 language={accent}
                 onUnavailable={reportAudioUnavailable}
-                label={`Écouter ${card.term}`}
+                label={`Écouter ${cardTerm}`}
               />
             </div>
             <h2 className="relative mt-6 max-w-full break-words font-serif text-4xl tracking-[-0.04em] text-white sm:text-5xl">
-              {card.term}
+              {cardTerm}
             </h2>
-            <p className="relative mt-4 font-mono text-sm tracking-wide text-zinc-500">
-              {card.phonetic ?? " "}
+            <p className="relative mt-4 text-sm text-zinc-500">
+              {cardPhonetic || " "}
             </p>
             <button
               type="button"
@@ -487,51 +596,49 @@ export function ReviewWorkspace({
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-zinc-400">
-                  English
+                  {queueItem.isDiscovery ? "Nouveau mot" : "English"}
                 </p>
                 <h2 className="mt-2 break-words font-serif text-3xl tracking-[-0.04em] text-white sm:text-4xl">
-                  {card.term}
+                  {cardTerm}
                 </h2>
-                <p className="mt-1 font-mono text-xs tracking-wide text-zinc-500">
-                  {card.phonetic}
-                </p>
+                <p className="mt-1 text-xs text-zinc-500">{cardPhonetic}</p>
               </div>
               <AudioButton
-                text={card.term}
+                text={cardTerm}
                 language={accent}
                 onUnavailable={reportAudioUnavailable}
-                label={`Écouter ${card.term}`}
+                label={`Écouter ${cardTerm}`}
               />
             </div>
 
             <p className="mt-5 border-l-2 border-amber-200/60 pl-4 font-serif text-2xl leading-snug text-amber-100">
-              {card.translation}
+              {cardTranslation}
             </p>
 
             <div className="mt-6 rounded-2xl border border-white/[0.07] bg-black/20 p-4 sm:p-5">
               <div className="flex items-start justify-between gap-3">
                 <p className="font-serif text-base italic leading-7 text-zinc-200">
-                  “{card.exampleSentence}”
+                  “{cardExample}”
                 </p>
                 <AudioButton
-                  text={card.exampleSentence}
+                  text={cardExample}
                   language={accent}
                   onUnavailable={reportAudioUnavailable}
                   label="Écouter l’exemple en anglais"
                 />
               </div>
               <p className="mt-2 text-sm leading-6 text-zinc-500">
-                {card.exampleTranslation}
+                {cardExampleTranslation}
               </p>
             </div>
 
-            {card.mnemonic ? (
+            {cardMnemonic ? (
               <div className="mt-4 rounded-xl border border-violet-300/10 bg-violet-300/[0.04] px-4 py-3">
                 <p className="text-xs font-medium text-violet-200/80">
                   Moyen mnémotechnique
                 </p>
                 <p className="mt-1.5 text-sm leading-6 text-zinc-300">
-                  {card.mnemonic}
+                  {cardMnemonic}
                 </p>
               </div>
             ) : null}
@@ -551,7 +658,8 @@ export function ReviewWorkspace({
       {revealed ? (
         <section aria-label="Évaluer votre réponse" className="mt-5">
           <p className="mb-3 text-center text-xs text-zinc-500">
-            Comment était cette carte ? <span className="hidden sm:inline">Raccourcis 1-4</span>
+            Comment était cette carte ?{" "}
+            <span className="hidden sm:inline">Raccourcis 1-4</span>
           </p>
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
             {ratingButtons.map(({ rating, label, accent: buttonAccent }) => (
@@ -566,11 +674,21 @@ export function ReviewWorkspace({
                   {rating} · {label}
                 </span>
                 <span className="mt-1 text-[11px] opacity-70">
-                  {card.intervals[rating]}
+                  {intervals[rating]}
                 </span>
               </button>
             ))}
           </div>
+          {queueItem.isDiscovery ? (
+            <button
+              type="button"
+              disabled={isSubmitting}
+              onClick={skipKnownWord}
+              className="mx-auto mt-4 flex min-h-11 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.035] px-4 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-50"
+            >
+              Déjà connu / Passer
+            </button>
+          ) : null}
         </section>
       ) : null}
     </main>
