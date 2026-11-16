@@ -14,10 +14,12 @@ export function DashboardWorkspace({
   initialSettings,
   stats,
   dateLabel,
+  mistakeCount,
 }: {
   initialSettings: AppSettings;
   stats: DashboardStats;
   dateLabel: string;
+  mistakeCount: number;
 }) {
   const [appSettings, setAppSettings] = useState(initialSettings);
 
@@ -122,6 +124,34 @@ export function DashboardWorkspace({
           </Link>
         </article>
       </section>
+
+      <Link
+        href="/drill"
+        className="group mt-3 flex min-h-20 flex-wrap items-center justify-between gap-4 rounded-3xl border border-violet-300/[0.14] bg-[#111114] px-5 py-4 transition-colors duration-150 hover:border-violet-300/30 hover:bg-white/[0.035] sm:px-7"
+      >
+        <span className="flex items-center gap-4">
+          <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-violet-300/[0.09] text-violet-200">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="size-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 5h10M9 3v2c0 4-2 7-5 9m2-5c1.2 1.7 2.8 3 4.5 4" />
+              <path d="M13 18h8m-7-3 3-7 3 7m-5-2h4" />
+            </svg>
+          </span>
+          <span>
+            <span className="block text-sm font-medium text-zinc-100">
+              Traduction active FR → EN
+            </span>
+            <span className="mt-1 block text-sm text-zinc-400">
+              Entraînez-vous à produire vos mots et expressions.
+              {mistakeCount > 0
+                ? ` ${mistakeCount} point${mistakeCount === 1 ? "" : "s"} de vigilance ciblé${mistakeCount === 1 ? "" : "s"}.`
+                : ""}
+            </span>
+          </span>
+        </span>
+        <span className="ml-auto inline-flex min-h-11 items-center rounded-full bg-white px-4 text-sm font-medium text-zinc-950 transition group-hover:bg-zinc-200">
+          S’entraîner <span aria-hidden="true" className="ml-2">→</span>
+        </span>
+      </Link>
 
       <section
         aria-labelledby="weekly-progress-title"

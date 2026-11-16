@@ -3,6 +3,7 @@ import { DashboardWorkspace } from "@/components/DashboardWorkspace";
 import { getPublicLLMConfig } from "@/domain/llm-config";
 import { getAppSettings } from "@/domain/settings";
 import { getDashboardStats } from "@/domain/stats";
+import { getRecentMistakes } from "@/domain/drill";
 import { isPasswordAuthEnabled } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 export default function HomePage() {
   const appSettings = getAppSettings();
   const stats = getDashboardStats(appSettings);
+  const mistakeCount = getRecentMistakes(1).totalCount;
   const llmConfig = getPublicLLMConfig();
   const dateLabel = new Intl.DateTimeFormat("fr-FR", {
     weekday: "long",
@@ -30,6 +32,7 @@ export default function HomePage() {
         initialSettings={appSettings}
         stats={stats}
         dateLabel={dateLabel}
+        mistakeCount={mistakeCount}
       />
     </AppShell>
   );

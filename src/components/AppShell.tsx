@@ -8,6 +8,7 @@ import { LLMConfigModal } from "./LLMConfigModal";
 const navigation = [
   { href: "/", label: "Tableau de bord", mobileLabel: "Aujourd'hui", icon: "grid" },
   { href: "/lesson", label: "Micro-leçon", mobileLabel: "Leçon", icon: "book" },
+  { href: "/drill", label: "Traduction active", mobileLabel: "Traduction", icon: "translate" },
   { href: "/review", label: "Révision FSRS", mobileLabel: "Révision", icon: "repeat" },
 ] as const;
 
@@ -25,6 +26,12 @@ function NavigationIcon({ name }: { name: (typeof navigation)[number]["icon"] })
       <>
         <path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H20v16H7.5A2.5 2.5 0 0 0 5 21.5z" />
         <path d="M5 5.5v16M9 7h7m-7 4h7" />
+      </>
+    ),
+    translate: (
+      <>
+        <path d="M4 5h10M9 3v2c0 4-2 7-5 9m2-5c1.2 1.7 2.8 3 4.5 4" />
+        <path d="M13 18h8m-7-3 3-7 3 7m-5-2h4" />
       </>
     ),
     repeat: (
@@ -64,7 +71,7 @@ export function AppShell({
   dueCount?: number;
   hasProviderKey: boolean;
   passwordAuthEnabled: boolean;
-  activeNav?: "home" | "lesson" | "review";
+  activeNav?: "home" | "lesson" | "drill" | "review";
 }) {
   const pathname = usePathname();
   const [configured, setConfigured] = useState(hasProviderKey);
@@ -125,7 +132,9 @@ export function AppShell({
                     ? "/"
                     : activeNav === "lesson"
                       ? "/lesson"
-                      : "/review")
+                      : activeNav === "drill"
+                        ? "/drill"
+                        : "/review")
                 : item.href === "/"
                   ? pathname === "/"
                   : pathname.startsWith(item.href);
@@ -237,7 +246,7 @@ export function AppShell({
 
       <nav
         aria-label="Navigation mobile"
-        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-white/[0.08] bg-zinc-950/90 px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-xl lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-white/[0.08] bg-zinc-950/90 px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-xl lg:hidden"
       >
         {navigation.map((item) => {
           const active =
@@ -247,7 +256,9 @@ export function AppShell({
                   ? "/"
                   : activeNav === "lesson"
                     ? "/lesson"
-                    : "/review")
+                    : activeNav === "drill"
+                      ? "/drill"
+                      : "/review")
               : item.href === "/"
                 ? pathname === "/"
                 : pathname.startsWith(item.href);

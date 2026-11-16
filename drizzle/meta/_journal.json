@@ -15,6 +15,13 @@
       "when": 1794779445517,
       "tag": "0001_cool_mongu",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794787526091,
+      "tag": "0002_smart_whiplash",
+      "breakpoints": true
     }
   ]
 }

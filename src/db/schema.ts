@@ -69,3 +69,17 @@ export const activityLog = sqliteTable(
   },
   (table) => [index("idx_activity_date").on(table.createdAt)],
 );
+
+export const mistakes = sqliteTable(
+  "mistakes",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    source: text("source").$type<"drill" | "chat">().notNull(),
+    userText: text("user_text").notNull(),
+    correction: text("correction").notNull(),
+    category: text("category"),
+    explanation: text("explanation"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("idx_mistakes_date").on(table.createdAt)],
+);
