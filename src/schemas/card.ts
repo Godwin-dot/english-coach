@@ -19,6 +19,7 @@ export const SubmitReviewInputSchema = z.object({
     z.literal(4),
   ]),
   duration_s: z.number().int().nonnegative().optional(),
+  mode: z.enum(["due", "continuous"]).optional(),
 });
 
 export type CreateCardInput = z.infer<typeof CreateCardInputSchema>;

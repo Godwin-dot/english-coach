@@ -5,6 +5,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReviewCardView } from "@/domain/cards";
 import type { ReviewRating } from "@/srs";
 
+type ReviewQueueCard = ReviewCardView & {
+  reviewMode: "due" | "continuous";
+};
+
+type ContinuousBatch = {
+  cards: ReviewCardView[];
+  mode: "due" | "continuous";
+  dueRemaining: number;
+  totalCardCount: number;
+};
+
 const ratingButtons: Array<{
   rating: ReviewRating;
   label: string;
@@ -102,23 +113,95 @@ function AudioButton({
 export function ReviewWorkspace({
   initialCards,
   totalDueCount,
+  totalCardCount,
 }: {
   initialCards: ReviewCardView[];
   totalDueCount: number;
+  totalCardCount: number;
 }) {
-  const [cards, setCards] = useState(initialCards);
+  const [cards, setCards] = useState<ReviewQueueCard[]>(
+    initialCards.map((item) => ({ ...item, reviewMode: "due" })),
+  );
   const [reviewedCount, setReviewedCount] = useState(0);
+  const [dueRemaining, setDueRemaining] = useState(totalDueCount);
+  const [continuousMode, setContinuousMode] = useState(totalDueCount === 0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [sessionFinished, setSessionFinished] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [accent, setAccent] = useState<"en-US" | "en-GB">("en-US");
   const startedAt = useRef(Date.now());
+  const reviewedIds = useRef(new Set<number>());
+  const loadingMoreRef = useRef(false);
   const card = cards[0] ?? null;
-  const sessionTotal = initialCards.length;
   const currentNumber = card ? reviewedCount + 1 : reviewedCount;
-  const progress = sessionTotal
-    ? Math.min((reviewedCount / sessionTotal) * 100, 100)
-    : 0;
+
+  const loadNextBatch = useCallback(async () => {
+    if (loadingMoreRef.current || sessionFinished || totalCardCount === 0) {
+      return;
+    }
+
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    setError("");
+
+    async function requestBatch(excludeIds: number[]): Promise<ContinuousBatch> {
+      const query = new URLSearchParams({
+        mode: "continuous",
+        excludeIds: [...new Set(excludeIds)].join(","),
+      });
+      const response = await fetch(`/api/review?${query.toString()}`, {
+        cache: "no-store",
+      });
+      const body: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(getErrorMessage(body));
+      }
+      return body as ContinuousBatch;
+    }
+
+    try {
+      const excluded = [
+        ...reviewedIds.current,
+        ...cards.map(({ id }) => id),
+      ];
+      let batch = await requestBatch(excluded);
+
+      if (!batch.cards.length && batch.totalCardCount > 0) {
+        reviewedIds.current.clear();
+        batch = await requestBatch(cards.map(({ id }) => id));
+      }
+
+      if (batch.cards.length) {
+        setCards((current) => {
+          const currentIds = new Set(current.map(({ id }) => id));
+          const additions = batch.cards
+            .filter(({ id }) => !currentIds.has(id))
+            .map((item) => ({ ...item, reviewMode: batch.mode }));
+          return additions.length ? [...current, ...additions] : current;
+        });
+        if (dueRemaining === 0) {
+          setContinuousMode(true);
+        }
+      }
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Impossible de charger les cartes suivantes.",
+      );
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [cards, dueRemaining, sessionFinished, totalCardCount]);
+
+  useEffect(() => {
+    if (cards.length < 2 && !sessionFinished && totalCardCount > 0) {
+      void loadNextBatch();
+    }
+  }, [cards.length, loadNextBatch, sessionFinished, totalCardCount]);
 
   useEffect(() => {
     setRevealed(false);
@@ -143,14 +226,26 @@ export function ReviewWorkspace({
         const response = await fetch("/api/review", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cardId: card.id, rating, duration_s: durationS }),
+          body: JSON.stringify({
+            cardId: card.id,
+            rating,
+            duration_s: durationS,
+            mode: card.reviewMode,
+          }),
         });
         const body: unknown = await response.json().catch(() => null);
         if (!response.ok) {
           throw new Error(getErrorMessage(body));
         }
+        reviewedIds.current.add(card.id);
         setCards((current) => current.filter((item) => item.id !== card.id));
         setReviewedCount((current) => current + 1);
+        if (card.reviewMode === "due") {
+          setDueRemaining((current) => Math.max(current - 1, 0));
+        }
+        if (dueRemaining <= (card.reviewMode === "due" ? 1 : 0)) {
+          setContinuousMode(true);
+        }
         setRevealed(false);
       } catch (caught) {
         setError(
@@ -162,7 +257,7 @@ export function ReviewWorkspace({
         setIsSubmitting(false);
       }
     },
-    [card, isSubmitting, revealed],
+    [card, dueRemaining, isSubmitting, revealed],
   );
 
   useEffect(() => {
@@ -197,9 +292,8 @@ export function ReviewWorkspace({
     setError("La synthèse vocale n’est pas disponible dans ce navigateur.");
   }
 
-  if (!card) {
-    const remainingDue = Math.max(totalDueCount - sessionTotal, 0);
-    const isSessionComplete = reviewedCount > 0;
+  if (sessionFinished || totalCardCount === 0) {
+    const isSessionComplete = sessionFinished && reviewedCount > 0;
 
     return (
       <main className="mx-auto flex min-h-[calc(100vh-7rem)] max-w-5xl items-center px-4 py-10 sm:px-8">
@@ -224,21 +318,25 @@ export function ReviewWorkspace({
             </h1>
             <p className="mx-auto mt-4 max-w-lg text-sm leading-7 text-zinc-400">
               {isSessionComplete
-                ? `Vous avez révisé ${reviewedCount} ${
+                ? `Vous avez travaillé ${reviewedCount} ${
                     reviewedCount === 1 ? "carte" : "cartes"
-                  } aujourd’hui.`
-                : totalDueCount
-                  ? "Aucune carte n’est disponible dans votre plafond actuel. Revenez après avoir ajusté vos objectifs."
-                  : "Aucune carte n’est à revoir pour le moment. Une nouvelle leçon est toujours une bonne occasion d’apprendre."}
-              {isSessionComplete && remainingDue > 0
-                ? ` ${remainingDue} autre${
-                    remainingDue === 1 ? "" : "s"
-                  } carte${remainingDue === 1 ? "" : "s"} attend${
-                    remainingDue === 1 ? "" : "ent"
-                  } une prochaine session.`
-                : ""}
+                  } dans cette session.`
+                : "Aucune carte n’est disponible pour le moment. Une nouvelle leçon est toujours une bonne occasion d’apprendre."}
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              {sessionFinished && totalCardCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    reviewedIds.current.clear();
+                    setSessionFinished(false);
+                    setContinuousMode(true);
+                  }}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition-colors duration-150 hover:bg-zinc-200 active:scale-[0.98]"
+                >
+                  Continuer à réviser <span aria-hidden="true">→</span>
+                </button>
+              ) : null}
               <Link
                 href="/lesson"
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition-colors duration-150 hover:bg-zinc-200 active:scale-[0.98]"
@@ -258,6 +356,35 @@ export function ReviewWorkspace({
     );
   }
 
+  if (!card) {
+    return (
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
+        <section className="rounded-3xl border border-white/[0.08] bg-[#111114] p-6 text-center sm:p-10">
+          <div
+            role="status"
+            aria-label="Chargement des cartes suivantes"
+            className="mx-auto max-w-sm animate-pulse space-y-3"
+          >
+            <div className="mx-auto h-3 w-32 rounded-full bg-white/[0.08]" />
+            <div className="mx-auto h-8 w-56 rounded-full bg-white/[0.06]" />
+          </div>
+          <p className="mt-5 text-sm text-zinc-400">
+            {error || "Préparation des prochaines cartes…"}
+          </p>
+          {error ? (
+            <button
+              type="button"
+              onClick={() => void loadNextBatch()}
+              className="mt-5 inline-flex min-h-11 items-center rounded-full bg-white px-5 text-sm font-medium text-zinc-950 hover:bg-zinc-200"
+            >
+              Réessayer
+            </button>
+          ) : null}
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto max-w-5xl px-4 pb-8 pt-8 sm:px-8 sm:pt-12">
       <header className="page-enter mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -269,45 +396,56 @@ export function ReviewWorkspace({
             À vous de jouer.
           </h1>
         </div>
-        <label className="flex min-h-11 items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 text-xs text-zinc-400">
-          Accent
-          <select
-            value={accent}
-            onChange={(event) =>
-              setAccent(event.target.value as "en-US" | "en-GB")
-            }
-            className="bg-transparent font-medium text-zinc-100 outline-none focus-visible:text-white"
-            aria-label="Choisir l’accent audio"
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex min-h-11 items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 text-xs text-zinc-400">
+            Accent
+            <select
+              value={accent}
+              onChange={(event) =>
+                setAccent(event.target.value as "en-US" | "en-GB")
+              }
+              className="bg-transparent font-medium text-zinc-100 outline-none focus-visible:text-white"
+              aria-label="Choisir l’accent audio"
+            >
+              <option value="en-US">US</option>
+              <option value="en-GB">GB</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => setSessionFinished(true)}
+            className="inline-flex min-h-11 items-center rounded-full border border-white/[0.08] bg-white/[0.035] px-4 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.08] hover:text-white"
           >
-            <option value="en-US">US</option>
-            <option value="en-GB">GB</option>
-          </select>
-        </label>
+            Terminer la session
+          </button>
+        </div>
       </header>
 
       <section aria-label="Progression de la session" className="mb-5">
-        <div className="mb-2 flex items-center justify-between text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-xs">
           <p className="font-medium text-zinc-300">
-            Carte <span className="text-white">{currentNumber}</span> / {sessionTotal}
+            Dues restantes : <span className="tabular-nums text-white">{dueRemaining}</span>
+            <span className="mx-2 text-zinc-700">·</span>
+            Révisées : <span className="tabular-nums text-white">{reviewedCount}</span>
           </p>
           <p className="text-zinc-500">
-            {totalDueCount} {totalDueCount === 1 ? "carte due" : "cartes dues"}
+            {continuousMode
+              ? `Mode continu · Carte ${currentNumber}`
+              : `Cartes dues · Carte ${currentNumber}`}
           </p>
         </div>
-        <div
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={sessionTotal}
-          aria-valuenow={reviewedCount}
-          aria-label="Progression de la session"
-          className="h-1.5 overflow-hidden rounded-full bg-white/[0.07]"
-        >
-          <div
-            className="h-full rounded-full bg-amber-200 transition-[width] duration-150"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
       </section>
+
+      {continuousMode ? (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.045] px-4 py-3 text-sm text-emerald-100">
+          <span>
+            Cartes du jour terminées — poursuite en révision continue
+          </span>
+          {loadingMore ? (
+            <span className="text-xs text-emerald-100/70">Chargement…</span>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="review-scene min-h-[430px]">
         <div className={`review-card-inner ${revealed ? "is-flipped" : ""}`}>

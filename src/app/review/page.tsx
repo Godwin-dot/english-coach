@@ -33,6 +33,7 @@ export default function ReviewPage() {
       <ReviewWorkspace
         initialCards={review.cards}
         totalDueCount={review.totalDueCount}
+        totalCardCount={review.totalCardCount}
       />
     </AppShell>
   );

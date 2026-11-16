@@ -2,7 +2,7 @@ import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { ZodError } from "zod";
 import { db } from "@/db";
 import { activityLog, cards, mistakes } from "@/db/schema";
-import { addSentenceCardFromDrill } from "@/domain/cards";
+import { addMissedVocabCards } from "@/domain/cards";
 import { LLMProviderError } from "@/llm/errors";
 import { getLLMProvider } from "@/llm/provider";
 import {
@@ -147,17 +147,12 @@ export async function processChatTurn(input: ChatTurnInput) {
     }
   });
 
-  const addedToFSRS =
-    result.score < 7 || result.detected_mistakes.length > 0;
-  if (addedToFSRS) {
-    addSentenceCardFromDrill({
-      englishSentence: result.natural_version,
-      frenchTranslation: lastUserMessage.content,
-      mnemonic: result.feedback_fr,
-    });
-  }
+  const addedWords =
+    result.score < 7 || result.detected_mistakes.length > 0
+      ? addMissedVocabCards(result.missed_vocab)
+      : [];
 
-  return { ...result, addedToFSRS };
+  return { ...result, addedWords };
 }
 
 export function closeChatSession(input: ChatCloseSessionInput): void {

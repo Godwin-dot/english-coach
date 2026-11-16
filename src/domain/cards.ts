@@ -6,6 +6,8 @@ import {
   gte,
   lt,
   lte,
+  gt,
+  notInArray,
   sql,
 } from "drizzle-orm";
 import { db } from "@/db";
@@ -34,9 +36,11 @@ export type AddCardResult =
   | { status: "already_exists"; card: CardView }
   | { status: "daily_cap_reached"; limit: number };
 
-export type AddSentenceCardResult = {
-  status: "created" | "already_exists";
-  card: CardView;
+export type MissedVocabItem = {
+  term: string;
+  translation: string;
+  context_sentence: string;
+  note_fr: string;
 };
 
 export class CardNotFoundError extends Error {
@@ -168,58 +172,59 @@ export function addCardFromLesson(input: CreateCardInput): AddCardResult {
   });
 }
 
-export function addSentenceCardFromDrill({
-  englishSentence,
-  frenchTranslation,
-  mnemonic,
-}: {
-  englishSentence: string;
-  frenchTranslation: string;
-  mnemonic: string;
-}): AddSentenceCardResult {
+export function addMissedVocabCards(items: MissedVocabItem[]): string[] {
   const now = new Date();
   const createdAt = now.toISOString();
 
   return db.transaction((transaction) => {
-    const existing = getMatchingCard(englishSentence, transaction);
-    if (existing) {
-      return { status: "already_exists", card: toCardView(existing) };
+    const addedWords: string[] = [];
+    const seenTerms = new Set<string>();
+
+    for (const item of items.slice(0, 3)) {
+      const term = item.term.trim();
+      const normalizedTerm = term.toLocaleLowerCase("en");
+      const wordCount = term.split(/\s+/u).filter(Boolean).length;
+      if (!term || wordCount > 4 || seenTerms.has(normalizedTerm)) {
+        continue;
+      }
+      seenTerms.add(normalizedTerm);
+
+      if (getMatchingCard(term, transaction)) {
+        continue;
+      }
+
+      const initialState = createInitialFSRSCard(now);
+      const inserted = transaction
+        .insert(cards)
+        .values({
+          language: "en",
+          term,
+          translation: item.translation.trim(),
+          exampleSentence: item.context_sentence.trim(),
+          exampleTranslation: item.translation.trim(),
+          mnemonic: item.note_fr.trim() || null,
+          sourceLessonId: null,
+          due: initialState.due,
+          fsrsStateJson: initialState.fsrsStateJson,
+          createdAt,
+        })
+        .onConflictDoNothing()
+        .returning({ id: cards.id })
+        .get();
+
+      if (inserted) {
+        addedWords.push(term);
+      }
     }
 
-    const initialState = createInitialFSRSCard(now);
-    const inserted = transaction
-      .insert(cards)
-      .values({
-        language: "en",
-        term: englishSentence,
-        translation: frenchTranslation,
-        exampleSentence: englishSentence,
-        exampleTranslation: frenchTranslation,
-        mnemonic,
-        sourceLessonId: null,
-        due: initialState.due,
-        fsrsStateJson: initialState.fsrsStateJson,
-        createdAt,
-      })
-      .onConflictDoNothing()
-      .returning()
-      .get();
-
-    if (inserted) {
-      return { status: "created", card: toCardView(inserted) };
-    }
-
-    const racedCard = getMatchingCard(englishSentence, transaction);
-    if (racedCard) {
-      return { status: "already_exists", card: toCardView(racedCard) };
-    }
-    throw new Error("La phrase n’a pas pu être ajoutée aux révisions.");
+    return addedWords;
   });
 }
 
 export function getDueCards(now = new Date()): {
   cards: ReviewCardView[];
   totalDueCount: number;
+  totalCardCount: number;
 } {
   const reviewLimit = readIntegerSetting("daily_review_cap", 15, 0);
   const dueWhere = lte(cards.due, now.toISOString());
@@ -239,6 +244,75 @@ export function getDueCards(now = new Date()): {
       intervals: previewNextIntervals(row.fsrsStateJson, now),
     })),
     totalDueCount,
+    totalCardCount: db.select({ value: count() }).from(cards).get()?.value ?? 0,
+  };
+}
+
+export type ContinuousReviewBatch = {
+  cards: ReviewCardView[];
+  mode: "due" | "continuous";
+  dueRemaining: number;
+  totalCardCount: number;
+};
+
+export function getContinuousReviewCards(
+  excludeIds: number[],
+  now = new Date(),
+  limit = 10,
+): ContinuousReviewBatch {
+  const nowIso = now.toISOString();
+  const uniqueExcluded = [...new Set(excludeIds)];
+  const notExcluded =
+    uniqueExcluded.length > 0 ? notInArray(cards.id, uniqueExcluded) : undefined;
+  const dueWhere = and(
+    lte(cards.due, nowIso),
+    ...(notExcluded ? [notExcluded] : []),
+  );
+  const dueRemaining =
+    db.select({ value: count() }).from(cards).where(dueWhere).get()?.value ?? 0;
+  const totalCardCount =
+    db.select({ value: count() }).from(cards).get()?.value ?? 0;
+  const stability = sql<number>`coalesce(json_extract(${cards.fsrsStateJson}, '$.stability'), 0)`;
+  const dueRows = db
+    .select()
+    .from(cards)
+    .where(dueWhere)
+    .orderBy(asc(cards.due), asc(stability), asc(cards.id))
+    .limit(limit)
+    .all();
+
+  if (dueRows.length > 0) {
+    return {
+      cards: dueRows.map((row) => ({
+        ...toCardView(row),
+        intervals: previewNextIntervals(row.fsrsStateJson, now),
+      })),
+      mode: "due",
+      dueRemaining,
+      totalCardCount,
+    };
+  }
+
+  const notDueWhere = and(
+    gt(cards.due, nowIso),
+    ...(notExcluded ? [notExcluded] : []),
+  );
+  const continuousRows = db
+    .select()
+    .from(cards)
+    .where(notDueWhere)
+    .orderBy(asc(cards.due), asc(stability), asc(cards.id))
+    .limit(limit)
+    .all();
+
+  return {
+    cards: continuousRows.map((row) => ({
+      ...toCardView(row),
+      intervals: previewNextIntervals(row.fsrsStateJson, now),
+    })),
+    mode: "continuous",
+    dueRemaining,
+    totalCardCount,
   };
 }
 
@@ -257,6 +331,7 @@ export function submitCardReview(
   cardId: number,
   rating: SubmitReviewInput["rating"],
   durationS?: number,
+  mode: SubmitReviewInput["mode"] = "due",
 ): ReviewCardView {
   const now = new Date();
   const reviewedAt = now.toISOString();
@@ -269,6 +344,26 @@ export function submitCardReview(
       .get();
     if (!currentCard) {
       throw new CardNotFoundError();
+    }
+
+    const isContinuousPractice =
+      mode === "continuous" && currentCard.due > reviewedAt;
+    if (isContinuousPractice) {
+      transaction
+        .insert(activityLog)
+        .values({
+          kind: "card_practice",
+          refId: cardId,
+          rating,
+          durationS: durationS ?? null,
+          createdAt: reviewedAt,
+        })
+        .run();
+
+      return {
+        ...toCardView(currentCard),
+        intervals: previewNextIntervals(currentCard.fsrsStateJson, now),
+      };
     }
 
     const nextState = scheduleCardReview(

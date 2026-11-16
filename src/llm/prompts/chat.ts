@@ -22,6 +22,7 @@ export function buildChatTurnPrompts({
       "Assess only the latest user message for meaning, grammar, vocabulary, naturalness, and idiomatic phrasing.",
       "Accept correct alternatives and natural informal English. If the latest message is correct and idiomatic, detected_mistakes must be empty and score must be at least 8.5.",
       "Only identify real errors or clearly awkward phrasing. For each one quote an exact fragment from the latest user message, correct it, classify it, and explain it briefly in French.",
+      "In missed_vocab, extract only English words or short expressions of 1 to 3 words that were omitted, misspelled, or replaced by a false friend in the latest user message. Never use a complete sentence as a term; give its French meaning, a corrected English context_sentence, and a short French note. Return at most 3 entries and [] when no specific vocabulary item was missed.",
       "natural_version should preserve the learner's meaning while showing a natural English phrasing. Give supportive, concise coaching in French.",
       targetWords.length
         ? `When it fits organically, weave one of these recently learned English terms into the next reply: ${targetWords.join(", ")}.`
@@ -46,6 +47,14 @@ export function buildChatTurnPrompts({
             correction: "Corrected natural English phrase",
             category: "Grammar, vocabulary, preposition, word order, etc.",
             explanation: "Brief explanation in French",
+          },
+        ],
+        missed_vocab: [
+          {
+            term: "One missed English word or short expression (1-3 words; never a sentence)",
+            translation: "French meaning",
+            context_sentence: "Corrected complete English example sentence using the term",
+            note_fr: "Brief French note about the mistake",
           },
         ],
       },

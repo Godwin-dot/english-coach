@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   CardNotFoundError,
+  getContinuousReviewCards,
   getDueCards,
   submitCardReview,
 } from "@/domain/cards";
@@ -8,7 +9,29 @@ import { SubmitReviewInputSchema } from "@/schemas/card";
 
 export const dynamic = "force-dynamic";
 
-export function GET() {
+export function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  if (searchParams.get("mode") === "continuous") {
+    const rawExcludedIds = searchParams.get("excludeIds") ?? "";
+    const excludedIds = rawExcludedIds
+      ? rawExcludedIds.split(",").map((value) => Number(value))
+      : [];
+    if (
+      excludedIds.length > 5000 ||
+      excludedIds.some((id) => !Number.isSafeInteger(id) || id < 1)
+    ) {
+      return NextResponse.json(
+        { error: "La liste des cartes exclues est invalide." },
+        { status: 400 },
+      );
+    }
+
+    return NextResponse.json(
+      getContinuousReviewCards(excludedIds),
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
   return NextResponse.json(getDueCards(), {
     headers: { "Cache-Control": "no-store" },
   });
@@ -39,6 +62,7 @@ export async function POST(request: NextRequest) {
         parsed.data.cardId,
         parsed.data.rating,
         parsed.data.duration_s,
+        parsed.data.mode,
       ),
     );
   } catch (error) {

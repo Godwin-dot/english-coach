@@ -22,7 +22,7 @@ type DrillEvaluation = DrillEvaluationResult & {
   recentMistakes: RecentMistake[];
   categories: MistakeCategoryCount[];
   totalMistakes: number;
-  addedToFSRS: boolean;
+  addedWords: string[];
 };
 
 type RecognitionResult = { readonly transcript: string };
@@ -556,9 +556,9 @@ export function DrillWorkspace({
               </div>
 
               <div className="mt-5 border-t border-white/[0.07] pt-5">
-                {evaluation.addedToFSRS ? (
+                {evaluation.addedWords.length > 0 ? (
                   <p className="mb-4 inline-flex min-h-9 items-center rounded-full border border-emerald-300/20 bg-emerald-300/[0.07] px-3 text-xs font-medium text-emerald-100">
-                    Ajoutée à vos révisions FSRS
+                    Ajouté aux révisions : {evaluation.addedWords.join(", ")}
                   </p>
                 ) : null}
                 <div className="flex items-start justify-between gap-3">

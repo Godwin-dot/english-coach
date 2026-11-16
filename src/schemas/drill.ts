@@ -39,6 +39,16 @@ export const DrillEvaluationResultSchema = z.object({
       explanation: z.string().trim().min(1).max(500),
     }),
   ),
+  missed_vocab: z
+    .array(
+      z.object({
+        term: z.string().trim().min(1).max(80),
+        translation: z.string().trim().min(1).max(200),
+        context_sentence: z.string().trim().min(1).max(500),
+        note_fr: z.string().trim().max(500),
+      }),
+    )
+    .max(3),
 });
 
 export type GeneratedDrillPrompt = z.infer<typeof GeneratedDrillPromptSchema>;

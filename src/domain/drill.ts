@@ -8,7 +8,7 @@ import {
 } from "drizzle-orm";
 import { db } from "@/db";
 import { activityLog, cards, mistakes } from "@/db/schema";
-import { addSentenceCardFromDrill } from "@/domain/cards";
+import { addMissedVocabCards } from "@/domain/cards";
 import { getAppSettings } from "@/domain/settings";
 import { LLMProviderError } from "@/llm/errors";
 import {
@@ -147,7 +147,7 @@ export async function evaluateAndSaveDrill(
     recentMistakes: RecentMistake[];
     categories: MistakeCategoryCount[];
     totalMistakes: number;
-    addedToFSRS: boolean;
+    addedWords: string[];
   }
 > {
   const prompts = buildEvaluateDrillPrompts(input);
@@ -157,7 +157,6 @@ export async function evaluateAndSaveDrill(
     DrillEvaluationResultSchema,
   );
   const now = new Date().toISOString();
-  let addedToFSRS = false;
 
   db.transaction((transaction) => {
     if (result.detected_mistakes.length > 0) {
@@ -191,18 +190,10 @@ export async function evaluateAndSaveDrill(
       .run();
   });
 
-  if (result.score < 7 || result.detected_mistakes.length > 0) {
-    const firstMistake = result.detected_mistakes[0];
-    const mnemonic = firstMistake
-      ? `${firstMistake.user_fragment} → ${firstMistake.correction}. ${firstMistake.explanation}`
-      : result.feedback_fr;
-    addSentenceCardFromDrill({
-      englishSentence: result.ideal_translation,
-      frenchTranslation: input.frenchSentence,
-      mnemonic: mnemonic.slice(0, 500),
-    });
-    addedToFSRS = true;
-  }
+  const addedWords =
+    result.score < 7 || result.detected_mistakes.length > 0
+      ? addMissedVocabCards(result.missed_vocab)
+      : [];
 
   const updatedMistakes = getRecentMistakes(8);
   return {
@@ -210,6 +201,6 @@ export async function evaluateAndSaveDrill(
     recentMistakes: updatedMistakes.mistakes,
     categories: updatedMistakes.categories,
     totalMistakes: updatedMistakes.totalCount,
-    addedToFSRS,
+    addedWords,
   };
 }

@@ -42,7 +42,7 @@ type Coaching = {
     category: string;
     explanation: string;
   }>;
-  addedToFSRS: boolean;
+  addedWords: string[];
 };
 
 type ChatTurnResult = Coaching & {
@@ -215,7 +215,7 @@ export function ChatWorkspace({
             score: result.score,
             feedback_fr: result.feedback_fr,
             detected_mistakes: result.detected_mistakes,
-            addedToFSRS: result.addedToFSRS,
+            addedWords: result.addedWords,
           },
         },
         {
@@ -533,9 +533,9 @@ export function ChatWorkspace({
                           ))}
                         </ul>
                       ) : null}
-                      {entry.coaching.addedToFSRS ? (
+                      {entry.coaching.addedWords.length > 0 ? (
                         <p className="inline-flex min-h-8 items-center rounded-full border border-emerald-300/15 bg-emerald-300/[0.06] px-3 text-xs text-emerald-200">
-                          Ajoutée aux révisions FSRS
+                          Ajouté aux révisions : {entry.coaching.addedWords.join(", ")}
                         </p>
                       ) : null}
                     </div>
