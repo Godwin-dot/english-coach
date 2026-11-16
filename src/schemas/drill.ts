@@ -8,6 +8,11 @@ export const GeneratedDrillPromptSchema = z.object({
   hint_fr: z.string().trim().max(240).optional().default(""),
 });
 
+export const GenerateDrillInputSchema = z.object({
+  topic: z.string().trim().max(120).optional(),
+  cefrLevel: CEFRLevelSchema.optional(),
+});
+
 export const EvaluateDrillInputSchema = z.object({
   frenchSentence: z.string().trim().min(3).max(500),
   userTranslation: z.string().trim().min(1).max(500),
@@ -37,6 +42,7 @@ export const DrillEvaluationResultSchema = z.object({
 });
 
 export type GeneratedDrillPrompt = z.infer<typeof GeneratedDrillPromptSchema>;
+export type GenerateDrillInput = z.infer<typeof GenerateDrillInputSchema>;
 export type EvaluateDrillInput = z.infer<typeof EvaluateDrillInputSchema>;
 export type DrillEvaluationResult = z.infer<
   typeof DrillEvaluationResultSchema

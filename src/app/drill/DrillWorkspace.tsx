@@ -13,6 +13,8 @@ import type {
 import type { CEFRLevel } from "@/schemas/lesson";
 
 type DrillExercise = GeneratedDrillPrompt & {
+  cefrLevel: CEFRLevel;
+  topic: string | null;
   recentMistakes: RecentMistake[];
 };
 
@@ -20,6 +22,7 @@ type DrillEvaluation = DrillEvaluationResult & {
   recentMistakes: RecentMistake[];
   categories: MistakeCategoryCount[];
   totalMistakes: number;
+  addedToFSRS: boolean;
 };
 
 type RecognitionResult = { readonly transcript: string };
@@ -106,14 +109,20 @@ function MistakeList({ mistakes }: { mistakes: RecentMistake[] }) {
 
 export function DrillWorkspace({
   cefrLevel,
+  interests,
   initialMistakes,
   hasProviderKey,
+  retrySentence,
 }: {
   cefrLevel: CEFRLevel;
+  interests: string[];
   initialMistakes: RecentMistakes;
   hasProviderKey: boolean;
+  retrySentence: string | null;
 }) {
   const [exercise, setExercise] = useState<DrillExercise | null>(null);
+  const [selectedLevel, setSelectedLevel] = useState<CEFRLevel>(cefrLevel);
+  const [topic, setTopic] = useState("");
   const [translation, setTranslation] = useState("");
   const [evaluation, setEvaluation] = useState<DrillEvaluation | null>(null);
   const [mistakeSummary, setMistakeSummary] = useState(initialMistakes);
@@ -125,16 +134,33 @@ export function DrillWorkspace({
   const startedAt = useRef(Date.now());
   const recognitionRef = useRef<Recognition | null>(null);
 
-  const loadExercise = useCallback(async () => {
+  const loadExercise = useCallback(async (sentence?: string | null) => {
     setBusy("generate");
     setError("");
     setEvaluation(null);
     setTranslation("");
     setShowHint(false);
     try {
+      if (sentence) {
+        setExercise({
+          french_sentence: sentence,
+          target_vocab: [],
+          focus_grammar: "Phrase reprise de votre historique",
+          hint_fr: "",
+          cefrLevel: selectedLevel,
+          topic: null,
+          recentMistakes: [],
+        });
+        startedAt.current = Date.now();
+        return;
+      }
       const response = await fetch("/api/drill/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: topic.trim() || undefined,
+          cefrLevel: selectedLevel,
+        }),
       });
       const body: unknown = await response.json();
       if (!response.ok) {
@@ -151,11 +177,13 @@ export function DrillWorkspace({
     } finally {
       setBusy(null);
     }
-  }, []);
+  }, [selectedLevel, topic]);
 
   useEffect(() => {
-    void loadExercise();
-  }, [loadExercise]);
+    void loadExercise(retrySentence);
+    // Load once from the URL; later settings changes only affect the next request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retrySentence]);
 
   useEffect(() => {
     const speechWindow = window as SpeechWindow;
@@ -186,7 +214,7 @@ export function DrillWorkspace({
           frenchSentence: exercise.french_sentence,
           userTranslation: translation,
           targetVocab: exercise.target_vocab,
-          cefrLevel,
+          cefrLevel: exercise.cefrLevel,
           duration_s: Math.max(
             0,
             Math.floor((Date.now() - startedAt.current) / 1000),
@@ -268,7 +296,7 @@ export function DrillWorkspace({
             Traduction française → anglaise
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-            Une phrase à la fois, au niveau {cefrLevel}. Vos mots appris et vos
+            Une phrase à la fois, à votre niveau. Vos mots appris et vos
             erreurs récentes orientent les exercices.
           </p>
         </div>
@@ -277,6 +305,67 @@ export function DrillWorkspace({
           {mistakeSummary.totalCount === 1 ? "" : "s"} de vigilance
         </div>
       </header>
+
+      <section
+        aria-label="Configuration de l’exercice"
+        className="mb-3 grid gap-3 rounded-3xl border border-white/[0.08] bg-[#111114] p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end sm:p-5"
+      >
+        <div className="min-w-0 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px]">
+            <label className="block min-w-0 text-sm font-medium text-zinc-300">
+              Thème ou situation
+              <input
+                value={topic}
+                onChange={(event) => setTopic(event.target.value)}
+                maxLength={120}
+                placeholder="Ex. préparer une présentation"
+                className="mt-2 h-11 w-full rounded-xl border border-white/[0.1] bg-black/25 px-3.5 text-sm text-zinc-100 outline-none transition focus:border-violet-200/40 focus:ring-2 focus:ring-violet-200/10"
+              />
+            </label>
+            <label className="block text-sm font-medium text-zinc-300">
+              Niveau CEFR
+              <select
+                value={selectedLevel}
+                onChange={(event) =>
+                  setSelectedLevel(event.target.value as CEFRLevel)
+                }
+                className="mt-2 h-11 w-full rounded-xl border border-white/[0.1] bg-black/25 px-3.5 text-sm text-zinc-100 outline-none transition focus:border-violet-200/40 focus:ring-2 focus:ring-violet-200/10"
+              >
+                {(["A1", "A2", "B1", "B2", "C1", "C2"] as const).map((level) => (
+                  <option key={level} value={level}>{level}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {interests.length ? (
+            <div className="flex flex-wrap gap-2">
+              {interests.map((interest) => (
+                <button
+                  key={interest}
+                  type="button"
+                  onClick={() => setTopic(interest)}
+                  aria-pressed={topic === interest}
+                  className={`min-h-10 rounded-full border px-3.5 text-xs transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-200 ${
+                    topic === interest
+                      ? "border-violet-200/30 bg-violet-200/[0.09] text-violet-100"
+                      : "border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:bg-white/[0.07]"
+                  }`}
+                >
+                  {interest}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadExercise()}
+          disabled={busy !== null}
+          className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 active:scale-[0.98] disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        >
+          {busy === "generate" ? "Génération…" : "Générer une phrase"}
+        </button>
+      </section>
 
       <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.75fr)]">
         <section className="min-w-0 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7">
@@ -291,7 +380,7 @@ export function DrillWorkspace({
             <>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="rounded-full border border-violet-300/[0.14] bg-violet-300/[0.07] px-3 py-1.5 text-xs font-medium text-violet-100">
-                  Exercice · {cefrLevel}
+                  Exercice · {exercise.cefrLevel}
                 </span>
                 <span className="text-xs text-zinc-500">
                   {exercise.focus_grammar}
@@ -467,6 +556,11 @@ export function DrillWorkspace({
               </div>
 
               <div className="mt-5 border-t border-white/[0.07] pt-5">
+                {evaluation.addedToFSRS ? (
+                  <p className="mb-4 inline-flex min-h-9 items-center rounded-full border border-emerald-300/20 bg-emerald-300/[0.07] px-3 text-xs font-medium text-emerald-100">
+                    Ajoutée à vos révisions FSRS
+                  </p>
+                ) : null}
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs text-zinc-500">Traduction de référence</p>

@@ -10,6 +10,7 @@ const navigation = [
   { href: "/lesson", label: "Micro-leçon", mobileLabel: "Leçon", icon: "book" },
   { href: "/drill", label: "Traduction active", mobileLabel: "Traduction", icon: "translate" },
   { href: "/review", label: "Révision FSRS", mobileLabel: "Révision", icon: "repeat" },
+  { href: "/history", label: "Historique", mobileLabel: "Historique", icon: "history" },
 ] as const;
 
 function NavigationIcon({ name }: { name: (typeof navigation)[number]["icon"] }) {
@@ -38,6 +39,12 @@ function NavigationIcon({ name }: { name: (typeof navigation)[number]["icon"] })
       <>
         <path d="M20 7v5h-5M4 17v-5h5" />
         <path d="M5.5 9a7 7 0 0 1 12-2L20 9M4 15l2.5 2a7 7 0 0 0 12-2" />
+      </>
+    ),
+    history: (
+      <>
+        <path d="M3.5 12a8.5 8.5 0 1 0 2.4-5.9L3.5 8.5" />
+        <path d="M3.5 4.5v4h4m4.5-1v5l3 2" />
       </>
     ),
   };
@@ -71,7 +78,7 @@ export function AppShell({
   dueCount?: number;
   hasProviderKey: boolean;
   passwordAuthEnabled: boolean;
-  activeNav?: "home" | "lesson" | "drill" | "review";
+  activeNav?: "home" | "lesson" | "drill" | "review" | "history";
 }) {
   const pathname = usePathname();
   const [configured, setConfigured] = useState(hasProviderKey);
@@ -134,7 +141,9 @@ export function AppShell({
                       ? "/lesson"
                       : activeNav === "drill"
                         ? "/drill"
-                        : "/review")
+                        : activeNav === "review"
+                          ? "/review"
+                          : "/history")
                 : item.href === "/"
                   ? pathname === "/"
                   : pathname.startsWith(item.href);
@@ -246,7 +255,7 @@ export function AppShell({
 
       <nav
         aria-label="Navigation mobile"
-        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-white/[0.08] bg-zinc-950/90 px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-xl lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-white/[0.08] bg-zinc-950/90 px-1 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-xl lg:hidden"
       >
         {navigation.map((item) => {
           const active =
@@ -258,7 +267,9 @@ export function AppShell({
                     ? "/lesson"
                     : activeNav === "drill"
                       ? "/drill"
-                      : "/review")
+                      : activeNav === "review"
+                        ? "/review"
+                        : "/history")
               : item.href === "/"
                 ? pathname === "/"
                 : pathname.startsWith(item.href);

@@ -8,12 +8,14 @@ import {
 } from "drizzle-orm";
 import { db } from "@/db";
 import { activityLog, cards, mistakes } from "@/db/schema";
+import { addSentenceCardFromDrill } from "@/domain/cards";
 import { getAppSettings } from "@/domain/settings";
 import { LLMProviderError } from "@/llm/errors";
 import {
   DrillEvaluationResultSchema,
   GeneratedDrillPromptSchema,
   type DrillEvaluationResult,
+  type GenerateDrillInput,
   type EvaluateDrillInput,
 } from "@/schemas/drill";
 import { getLLMProvider } from "@/llm/provider";
@@ -100,12 +102,15 @@ function getTargetWords(): string[] {
   return [...new Set([...prioritized, ...recentCards])].slice(0, 5);
 }
 
-export async function generateDrillExercise() {
+export async function generateDrillExercise(input: GenerateDrillInput = {}) {
   const appSettings = getAppSettings();
   const recentMistakes = getRecentMistakes(5).mistakes;
+  const topic = input.topic?.trim() || undefined;
+  const cefrLevel = input.cefrLevel ?? appSettings.targetLevel;
   const prompts = buildGenerateDrillPrompts({
-    cefrLevel: appSettings.targetLevel,
-    interests: appSettings.interests,
+    cefrLevel,
+    interests: topic ? [topic] : appSettings.interests,
+    topic,
     targetWords: getTargetWords(),
     recentMistakes: recentMistakes.map(({ category, userText, correction }) => ({
       category,
@@ -126,7 +131,7 @@ export async function generateDrillExercise() {
     );
     const wordCount = exercise.french_sentence.split(/\s+/u).length;
     if (wordCount >= 12 && wordCount <= 25) {
-      return { ...exercise, recentMistakes };
+      return { ...exercise, cefrLevel, topic: topic ?? null, recentMistakes };
     }
   }
 
@@ -142,6 +147,7 @@ export async function evaluateAndSaveDrill(
     recentMistakes: RecentMistake[];
     categories: MistakeCategoryCount[];
     totalMistakes: number;
+    addedToFSRS: boolean;
   }
 > {
   const prompts = buildEvaluateDrillPrompts(input);
@@ -151,6 +157,7 @@ export async function evaluateAndSaveDrill(
     DrillEvaluationResultSchema,
   );
   const now = new Date().toISOString();
+  let addedToFSRS = false;
 
   db.transaction((transaction) => {
     if (result.detected_mistakes.length > 0) {
@@ -184,11 +191,25 @@ export async function evaluateAndSaveDrill(
       .run();
   });
 
+  if (result.score < 7 || result.detected_mistakes.length > 0) {
+    const firstMistake = result.detected_mistakes[0];
+    const mnemonic = firstMistake
+      ? `${firstMistake.user_fragment} → ${firstMistake.correction}. ${firstMistake.explanation}`
+      : result.feedback_fr;
+    addSentenceCardFromDrill({
+      englishSentence: result.ideal_translation,
+      frenchTranslation: input.frenchSentence,
+      mnemonic: mnemonic.slice(0, 500),
+    });
+    addedToFSRS = true;
+  }
+
   const updatedMistakes = getRecentMistakes(8);
   return {
     ...result,
     recentMistakes: updatedMistakes.mistakes,
     categories: updatedMistakes.categories,
     totalMistakes: updatedMistakes.totalCount,
+    addedToFSRS,
   };
 }

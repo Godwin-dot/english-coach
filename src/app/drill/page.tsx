@@ -8,7 +8,12 @@ import { DrillWorkspace } from "./DrillWorkspace";
 
 export const dynamic = "force-dynamic";
 
-export default function DrillPage() {
+export default async function DrillPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ retry?: string }>;
+}) {
+  const params = await searchParams;
   const appSettings = getAppSettings();
   const llmConfig = getPublicLLMConfig();
 
@@ -22,8 +27,10 @@ export default function DrillPage() {
     >
       <DrillWorkspace
         cefrLevel={appSettings.targetLevel}
+        interests={appSettings.interests}
         initialMistakes={getRecentMistakes()}
         hasProviderKey={llmConfig.hasGeminiKey || llmConfig.hasOpenrouterKey}
+        retrySentence={params.retry ?? null}
       />
     </AppShell>
   );

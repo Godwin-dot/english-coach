@@ -9,11 +9,13 @@ export type RecentMistakePrompt = {
 export function buildGenerateDrillPrompts({
   cefrLevel,
   interests,
+  topic,
   targetWords,
   recentMistakes,
 }: {
   cefrLevel: CEFRLevel;
   interests: string[];
+  topic?: string;
   targetWords: string[];
   recentMistakes: RecentMistakePrompt[];
 }): { systemPrompt: string; userPrompt: string } {
@@ -26,10 +28,14 @@ export function buildGenerateDrillPrompts({
       "When recent mistakes are provided, subtly practice the recurring grammar structure or trap without copying the mistake verbatim.",
       "Provide a short French hint that does not reveal the translation, and name the grammar focus.",
       "Use an empty target_vocab array only when no target vocabulary is supplied; otherwise return one to three supplied terms.",
+      topic
+        ? `Make the French sentence explicitly about this learner-selected theme or situation: ${topic}.`
+        : "Choose a relevant theme from the learner's configured interests.",
     ].join(" "),
     userPrompt: JSON.stringify({
       cefrLevel,
       interests,
+      topic: topic || null,
       targetWords,
       recentMistakes,
       requiredShape: {

@@ -34,6 +34,11 @@ export type AddCardResult =
   | { status: "already_exists"; card: CardView }
   | { status: "daily_cap_reached"; limit: number };
 
+export type AddSentenceCardResult = {
+  status: "created" | "already_exists";
+  card: CardView;
+};
+
 export class CardNotFoundError extends Error {
   constructor() {
     super("Carte introuvable.");
@@ -160,6 +165,55 @@ export function addCardFromLesson(input: CreateCardInput): AddCardResult {
       return { status: "already_exists", card: toCardView(racedCard) };
     }
     throw new Error("La carte n’a pas pu être enregistrée.");
+  });
+}
+
+export function addSentenceCardFromDrill({
+  englishSentence,
+  frenchTranslation,
+  mnemonic,
+}: {
+  englishSentence: string;
+  frenchTranslation: string;
+  mnemonic: string;
+}): AddSentenceCardResult {
+  const now = new Date();
+  const createdAt = now.toISOString();
+
+  return db.transaction((transaction) => {
+    const existing = getMatchingCard(englishSentence, transaction);
+    if (existing) {
+      return { status: "already_exists", card: toCardView(existing) };
+    }
+
+    const initialState = createInitialFSRSCard(now);
+    const inserted = transaction
+      .insert(cards)
+      .values({
+        language: "en",
+        term: englishSentence,
+        translation: frenchTranslation,
+        exampleSentence: englishSentence,
+        exampleTranslation: frenchTranslation,
+        mnemonic,
+        sourceLessonId: null,
+        due: initialState.due,
+        fsrsStateJson: initialState.fsrsStateJson,
+        createdAt,
+      })
+      .onConflictDoNothing()
+      .returning()
+      .get();
+
+    if (inserted) {
+      return { status: "created", card: toCardView(inserted) };
+    }
+
+    const racedCard = getMatchingCard(englishSentence, transaction);
+    if (racedCard) {
+      return { status: "already_exists", card: toCardView(racedCard) };
+    }
+    throw new Error("La phrase n’a pas pu être ajoutée aux révisions.");
   });
 }
 
