@@ -9,6 +9,7 @@ const navigation = [
   { href: "/", label: "Tableau de bord", mobileLabel: "Aujourd'hui", icon: "grid" },
   { href: "/lesson", label: "Micro-leçon", mobileLabel: "Leçon", icon: "book" },
   { href: "/drill", label: "Traduction active", mobileLabel: "Traduction", icon: "translate" },
+  { href: "/chat", label: "Conversation", mobileLabel: "Chat", icon: "chat" },
   { href: "/review", label: "Révision FSRS", mobileLabel: "Révision", icon: "repeat" },
   { href: "/history", label: "Historique", mobileLabel: "Historique", icon: "history" },
 ] as const;
@@ -47,6 +48,13 @@ function NavigationIcon({ name }: { name: (typeof navigation)[number]["icon"] })
         <path d="M3.5 4.5v4h4m4.5-1v5l3 2" />
       </>
     ),
+    chat: (
+      <>
+        <path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3 2v-6.5A7.5 7.5 0 0 1 10.5 7H12" />
+        <path d="M15.5 3.5h5m-2.5-2.5v5" />
+        <path d="M7.5 12h.01M11 12h.01M14.5 12h.01" />
+      </>
+    ),
   };
 
   return (
@@ -78,7 +86,7 @@ export function AppShell({
   dueCount?: number;
   hasProviderKey: boolean;
   passwordAuthEnabled: boolean;
-  activeNav?: "home" | "lesson" | "drill" | "review" | "history";
+  activeNav?: "home" | "lesson" | "drill" | "chat" | "review" | "history";
 }) {
   const pathname = usePathname();
   const [configured, setConfigured] = useState(hasProviderKey);
@@ -141,9 +149,11 @@ export function AppShell({
                       ? "/lesson"
                       : activeNav === "drill"
                         ? "/drill"
-                        : activeNav === "review"
-                          ? "/review"
-                          : "/history")
+                        : activeNav === "chat"
+                          ? "/chat"
+                          : activeNav === "review"
+                            ? "/review"
+                            : "/history")
                 : item.href === "/"
                   ? pathname === "/"
                   : pathname.startsWith(item.href);
@@ -255,7 +265,7 @@ export function AppShell({
 
       <nav
         aria-label="Navigation mobile"
-        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-white/[0.08] bg-zinc-950/90 px-1 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-xl lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-white/[0.08] bg-zinc-950/90 px-1 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-xl lg:hidden"
       >
         {navigation.map((item) => {
           const active =
@@ -267,9 +277,11 @@ export function AppShell({
                     ? "/lesson"
                     : activeNav === "drill"
                       ? "/drill"
-                      : activeNav === "review"
-                        ? "/review"
-                        : "/history")
+                      : activeNav === "chat"
+                        ? "/chat"
+                        : activeNav === "review"
+                          ? "/review"
+                          : "/history")
               : item.href === "/"
                 ? pathname === "/"
                 : pathname.startsWith(item.href);

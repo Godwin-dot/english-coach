@@ -153,6 +153,32 @@ export function DashboardWorkspace({
         </span>
       </Link>
 
+      <Link
+        href="/chat"
+        className="group mt-3 flex min-h-20 flex-wrap items-center justify-between gap-4 rounded-3xl border border-amber-200/[0.14] bg-[#111114] px-5 py-4 transition-colors duration-150 hover:border-amber-200/30 hover:bg-white/[0.035] sm:px-7"
+      >
+        <span className="flex items-center gap-4">
+          <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-amber-200/[0.09] text-amber-100">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="size-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3 2v-6.5A7.5 7.5 0 0 1 10.5 7H12" />
+              <path d="M15.5 3.5h5m-2.5-2.5v5" />
+              <path d="M7.5 12h.01M11 12h.01M14.5 12h.01" />
+            </svg>
+          </span>
+          <span>
+            <span className="block text-sm font-medium text-zinc-100">
+              Conversation en anglais
+            </span>
+            <span className="mt-1 block text-sm text-zinc-400">
+              Jouez un rôle et recevez un coaching personnalisé en direct.
+            </span>
+          </span>
+        </span>
+        <span className="ml-auto inline-flex min-h-11 items-center rounded-full bg-white px-4 text-sm font-medium text-zinc-950 transition group-hover:bg-zinc-200">
+          Démarrer <span aria-hidden="true" className="ml-2">→</span>
+        </span>
+      </Link>
+
       <section
         aria-labelledby="weekly-progress-title"
         className="mt-3 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7"
