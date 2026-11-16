@@ -84,10 +84,16 @@ export function DashboardWorkspace({
             </div>
           </div>
           <div className="relative mt-7 flex flex-wrap items-center gap-3">
+            <Link
+              href="/session"
+              className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition-colors duration-150 hover:bg-zinc-200 active:scale-[0.98]"
+            >
+              Lancer ma session du jour · 10 min →
+            </Link>
             {reviewableCards > 0 ? (
               <Link
                 href="/review"
-                className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition-colors duration-150 hover:bg-zinc-200 active:scale-[0.98]"
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.04] px-5 text-sm font-medium text-zinc-100 transition-colors duration-150 hover:bg-white/[0.09] active:scale-[0.98]"
               >
                 Continuer les révisions
               </Link>

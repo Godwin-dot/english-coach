@@ -248,11 +248,15 @@ export function addMissedVocabCards(items: MissedVocabItem[]): string[] {
   });
 }
 
-export function getDueCards(now = new Date()): {
+export function getDueCards(now = new Date(), maxCards?: number): {
   cards: ReviewCardView[];
   totalDueCount: number;
 } {
   const reviewLimit = readIntegerSetting("daily_review_cap", 15, 0);
+  const effectiveLimit =
+    maxCards === undefined
+      ? reviewLimit
+      : Math.max(0, Math.floor(maxCards));
   const dueWhere = lte(cards.due, now.toISOString());
   const totalDueCount =
     db.select({ value: count() }).from(cards).where(dueWhere).get()?.value ?? 0;
@@ -261,7 +265,7 @@ export function getDueCards(now = new Date()): {
     .from(cards)
     .where(dueWhere)
     .orderBy(asc(cards.due), asc(cards.id))
-    .limit(reviewLimit)
+    .limit(effectiveLimit)
     .all();
 
   return {

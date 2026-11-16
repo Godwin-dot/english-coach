@@ -277,6 +277,21 @@ export function SettingsPanel({
                 </ul>
               </div>
 
+              <section className="rounded-2xl border border-white/[0.08] bg-black/20 p-4">
+                <h3 className="text-sm font-medium text-zinc-100">
+                  Sauvegarde des données
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-zinc-400">
+                  Téléchargez vos données pédagogiques. Les clés API ne sont jamais exportées.
+                </p>
+                <a
+                  href="/api/export"
+                  className="mt-3 inline-flex min-h-11 items-center rounded-full border border-white/[0.1] bg-white/[0.05] px-4 text-sm text-zinc-100 transition-colors duration-150 hover:bg-white/[0.1]"
+                >
+                  Exporter mes données (.json)
+                </a>
+              </section>
+
               {error ? (
                 <p
                   role="alert"

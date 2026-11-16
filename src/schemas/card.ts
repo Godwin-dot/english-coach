@@ -39,6 +39,7 @@ const ShortVocabTermSchema = z
 
 export const DiscoverVocabRequestSchema = z.object({
   excludeTerms: z.array(z.string().trim().min(1).max(80)).max(500).optional(),
+  count: z.number().int().min(4).max(8).optional(),
 });
 
 export const CreateCardInputSchema = z.object({

@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { activityLog, lessons } from "@/db/schema";
 import {
@@ -116,6 +116,19 @@ export async function createAndSaveLesson(
 
 export function getLessonById(id: number): LessonView | null {
   const row = db.select().from(lessons).where(eq(lessons.id, id)).get();
+  return row ? toLessonView(row) : null;
+}
+
+export function getTodayLesson(now = new Date()): LessonView | null {
+  const start = `${now.toISOString().slice(0, 10)}T00:00:00.000Z`;
+  const endDate = new Date(start);
+  endDate.setUTCDate(endDate.getUTCDate() + 1);
+  const row = db
+    .select()
+    .from(lessons)
+    .where(and(gte(lessons.createdAt, start), lt(lessons.createdAt, endDate.toISOString())))
+    .orderBy(desc(lessons.createdAt), desc(lessons.id))
+    .get();
   return row ? toLessonView(row) : null;
 }
 

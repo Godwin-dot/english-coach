@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   DrillHistoryEntry,
   HistoryCard,
@@ -58,6 +59,7 @@ function dateLabel(card: HistoryCard) {
 }
 
 export function HistoryWorkspace({ history }: { history: FullHistory }) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<HistoryTab>("vocabulary");
   const [search, setSearch] = useState("");
   const [dueOnly, setDueOnly] = useState(false);
@@ -65,10 +67,31 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
   const [showBack, setShowBack] = useState(false);
   const [practiceIndex, setPracticeIndex] = useState(0);
   const [mistakeFilter, setMistakeFilter] = useState("");
+  const [allCards, setAllCards] = useState(history.allCards);
+  const [allLessons, setAllLessons] = useState(history.allLessons);
+  const [pendingDelete, setPendingDelete] = useState<{
+    kind: "card" | "lesson";
+    id: number;
+  } | null>(null);
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState("");
+  const confirmationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setAllCards(history.allCards);
+    setAllLessons(history.allLessons);
+  }, [history.allCards, history.allLessons]);
+
+  useEffect(
+    () => () => {
+      if (confirmationTimer.current) clearTimeout(confirmationTimer.current);
+    },
+    [],
+  );
 
   const filteredCards = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("fr");
-    return history.allCards.filter((card) => {
+    return allCards.filter((card) => {
       if (dueOnly && !card.isDue) {
         return false;
       }
@@ -80,7 +103,7 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
         card.translation.toLocaleLowerCase("fr").includes(query)
       );
     });
-  }, [dueOnly, history.allCards, search]);
+  }, [allCards, dueOnly, search]);
 
   const filteredMistakes = useMemo(() => {
     const query = mistakeFilter.trim().toLocaleLowerCase("fr");
@@ -98,6 +121,53 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
   }, [history.allMistakes, mistakeFilter]);
 
   const activeCard = filteredCards[practiceIndex] ?? null;
+
+  async function deleteItem(kind: "card" | "lesson", id: number) {
+    const key = `${kind}-${id}`;
+    if (pendingDelete?.kind !== kind || pendingDelete.id !== id) {
+      if (confirmationTimer.current) clearTimeout(confirmationTimer.current);
+      setPendingDelete({ kind, id });
+      setDeleteError("");
+      confirmationTimer.current = setTimeout(() => setPendingDelete(null), 3000);
+      return;
+    }
+
+    if (confirmationTimer.current) clearTimeout(confirmationTimer.current);
+    confirmationTimer.current = null;
+    setPendingDelete(null);
+    setDeletingKey(key);
+    setDeleteError("");
+    try {
+      const response = await fetch(`/api/${kind === "card" ? "cards" : "lessons"}/${id}`, {
+        method: "DELETE",
+      });
+      const body: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          typeof body === "object" &&
+            body !== null &&
+            "error" in body &&
+            typeof body.error === "string"
+            ? body.error
+            : "La suppression n’a pas abouti.",
+        );
+      }
+
+      if (kind === "card") {
+        setAllCards((current) => current.filter((card) => card.id !== id));
+        setPracticeIndex(0);
+      } else {
+        setAllLessons((current) => current.filter((lesson) => lesson.id !== id));
+      }
+      router.refresh();
+    } catch (caught) {
+      setDeleteError(
+        caught instanceof Error ? caught.message : "La suppression n’a pas abouti.",
+      );
+    } finally {
+      setDeletingKey(null);
+    }
+  }
 
   function setTab(tab: HistoryTab) {
     setActiveTab(tab);
@@ -130,9 +200,9 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
         </h1>
         <div className="mt-4 flex flex-wrap gap-2">
           {[
-            [`${history.allCards.length} cartes`, "text-amber-100"],
+            [`${allCards.length} cartes`, "text-amber-100"],
             [`${history.drillHistory.length} traductions`, "text-violet-100"],
-            [`${history.allLessons.length} leçons`, "text-emerald-100"],
+            [`${allLessons.length} leçons`, "text-emerald-100"],
             [`${history.allMistakes.length} erreurs`, "text-rose-100"],
           ].map(([label, color]) => (
             <span
@@ -144,6 +214,11 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
           ))}
         </div>
       </header>
+      {deleteError ? (
+        <p role="alert" className="mb-3 rounded-xl border border-rose-300/20 bg-rose-300/[0.07] px-4 py-3 text-sm text-rose-100">
+          {deleteError}
+        </p>
+      ) : null}
 
       <nav
         aria-label="Vues de l’historique"
@@ -339,14 +414,28 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
                       {dateLabel(card)}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => speak(card.term, "en-US")}
-                    aria-label={`Écouter ${card.term}`}
-                    className="grid size-11 shrink-0 place-items-center rounded-full border border-white/[0.08] text-zinc-300 hover:bg-white/[0.05]"
-                  >
-                    <span aria-hidden="true">▶</span>
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => speak(card.term, "en-US")}
+                      aria-label={`Écouter ${card.term}`}
+                      className="grid size-11 place-items-center rounded-full border border-white/[0.08] text-zinc-300 hover:bg-white/[0.05]"
+                    >
+                      <span aria-hidden="true">▶</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteItem("card", card.id)}
+                      disabled={deletingKey === `card-${card.id}`}
+                      className="min-h-11 rounded-full border border-rose-200/[0.12] px-3 text-xs text-rose-200 transition hover:bg-rose-300/[0.08] disabled:opacity-50"
+                    >
+                      {deletingKey === `card-${card.id}`
+                        ? "Suppression…"
+                        : pendingDelete?.kind === "card" && pendingDelete.id === card.id
+                          ? "Supprimer ?"
+                          : "Supprimer"}
+                    </button>
+                  </div>
                 </article>
               ))
             )}
@@ -406,10 +495,10 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
               Retrouvez un sujet et reprenez votre lecture.
             </p>
             <ul className="mt-4 divide-y divide-white/[0.06]">
-              {history.allLessons.length === 0 ? (
+              {allLessons.length === 0 ? (
                 <li className="py-6 text-sm text-zinc-400">Aucune leçon pour le moment.</li>
               ) : (
-                history.allLessons.map((lesson) => (
+                allLessons.map((lesson) => (
                   <li key={lesson.id} className="flex min-w-0 items-center justify-between gap-3 py-3">
                     <div className="min-w-0">
                       <p className="break-words text-sm font-medium text-zinc-100">
@@ -419,13 +508,27 @@ export function HistoryWorkspace({ history }: { history: FullHistory }) {
                         {lesson.cefrLevel} · {formatDate(lesson.createdAt)}
                       </p>
                     </div>
-                    <Link
-                      href={`/lesson?id=${lesson.id}`}
-                      aria-label={`Ouvrir la leçon ${lesson.topic}`}
-                      className="grid size-11 shrink-0 place-items-center rounded-full border border-white/[0.08] text-zinc-200 hover:bg-white/[0.05]"
-                    >
-                      <span aria-hidden="true">→</span>
-                    </Link>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Link
+                        href={`/lesson?id=${lesson.id}`}
+                        aria-label={`Ouvrir la leçon ${lesson.topic}`}
+                        className="grid size-11 place-items-center rounded-full border border-white/[0.08] text-zinc-200 hover:bg-white/[0.05]"
+                      >
+                        <span aria-hidden="true">→</span>
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => void deleteItem("lesson", lesson.id)}
+                        disabled={deletingKey === `lesson-${lesson.id}`}
+                        className="min-h-11 rounded-full border border-rose-200/[0.12] px-3 text-xs text-rose-200 transition hover:bg-rose-300/[0.08] disabled:opacity-50"
+                      >
+                        {deletingKey === `lesson-${lesson.id}`
+                          ? "Suppression…"
+                          : pendingDelete?.kind === "lesson" && pendingDelete.id === lesson.id
+                            ? "Supprimer ?"
+                            : "Supprimer"}
+                      </button>
+                    </div>
                   </li>
                 ))
               )}

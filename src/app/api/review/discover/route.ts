@@ -32,7 +32,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const cards = await generateNewVocabBatch(6, parsed.data.excludeTerms);
+    const cards = await generateNewVocabBatch(
+      parsed.data.count ?? 6,
+      parsed.data.excludeTerms,
+    );
     return NextResponse.json(
       { cards },
       { headers: { "Cache-Control": "no-store" } },
