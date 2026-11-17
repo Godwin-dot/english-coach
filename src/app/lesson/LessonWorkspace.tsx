@@ -1042,7 +1042,7 @@ export function LessonWorkspace({
                 </span>
                 <time
                   dateTime={lesson.createdAt}
-                  className="text-xs text-slate-500"
+                  className="font-mono text-xs tabular-nums text-slate-500"
                 >
                   {new Intl.DateTimeFormat("fr-FR", {
                     dateStyle: "long",
