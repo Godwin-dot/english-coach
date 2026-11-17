@@ -54,11 +54,12 @@ export function buildImportLessonPrompts({
     systemPrompt: [
       "You are a thoughtful English teacher for a French-speaking learner.",
       "Analyze the authentic English source without rewriting, shortening, or changing its meaning; the source itself must be preserved verbatim by the application.",
-      "Return only one valid JSON object matching the requested schema.",
-      "Use the supplied title exactly when one is provided; otherwise write a clear English title of at most 120 characters.",
+      "Return only one valid JSON object with exactly these top-level keys: title_en, translation_fr, key_vocab, quiz.",
+      "Use the supplied title exactly when one is provided; otherwise write a clear English title of at most 160 characters.",
       "Translate the full source faithfully and fluently into French.",
-      "Select five useful or challenging words or short expressions from the source for the learner's CEFR level. Each term must contain no more than three words. Give a contextual French meaning, an example sentence copied from the source, and a concise French mnemonic. Also provide a French translation of each example sentence.",
-      "Write exactly three precise comprehension questions based only on the source, with exactly three answer options, one correct index from 0 to 2, and a brief explanation in French.",
+      "Select 2 to 8 useful or challenging words or short expressions from the source for the learner's CEFR level. Each term must be at most 80 characters. Give a contextual French meaning, an example sentence copied from the source, and a short French mnemonic (an empty string is acceptable).",
+      "Write 2 to 5 precise comprehension questions based only on the source. Each needs 2 to 4 answer options, correct_index as a zero-based JSON number, and explanation_fr as a French string (an empty string is acceptable).",
+      'Follow this complete JSON example and preserve its exact key names: {"title_en":"The Tidal Archive","translation_fr":"Les marées déposent leurs archives sur le rivage.","key_vocab":[{"term":"tidal archive","translation":"archive des marées","example_sentence":"The tide left a tidal archive on the shore.","mnemonic":"Imaginez la marée qui classe ses souvenirs."},{"term":"shore","translation":"rivage","example_sentence":"The tide left a tidal archive on the shore.","mnemonic":""}],"quiz":[{"question_en":"What did the tide leave on the shore?","options":["A tidal archive","A wooden boat"],"correct_index":0,"explanation_fr":"Le texte dit que la marée a laissé une archive."},{"question_en":"Where was the archive left?","options":["On the shore","In a forest"],"correct_index":0,"explanation_fr":"L’archive est laissée sur le rivage."}]}',
     ].join(" "),
     userPrompt: JSON.stringify({
       cefrLevel,
@@ -82,6 +83,38 @@ export function buildImportLessonPrompts({
             options: ["Option A", "Option B", "Option C"],
             correct_index: 0,
             explanation_fr: "Brief explanation grounded in the source",
+          },
+        ],
+      },
+      exampleJson: {
+        title_en: "The Tidal Archive",
+        translation_fr: "Les marées déposent leurs archives sur le rivage.",
+        key_vocab: [
+          {
+            term: "tidal archive",
+            translation: "archive des marées",
+            example_sentence: "The tide left a tidal archive on the shore.",
+            mnemonic: "Imaginez la marée qui classe ses souvenirs.",
+          },
+          {
+            term: "shore",
+            translation: "rivage",
+            example_sentence: "The tide left a tidal archive on the shore.",
+            mnemonic: "",
+          },
+        ],
+        quiz: [
+          {
+            question_en: "What did the tide leave on the shore?",
+            options: ["A tidal archive", "A wooden boat"],
+            correct_index: 0,
+            explanation_fr: "Le texte dit que la marée a laissé une archive.",
+          },
+          {
+            question_en: "Where was the archive left?",
+            options: ["On the shore", "In a forest"],
+            correct_index: 0,
+            explanation_fr: "L’archive est laissée sur le rivage.",
           },
         ],
       },

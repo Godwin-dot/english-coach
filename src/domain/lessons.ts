@@ -130,11 +130,17 @@ export async function importCustomLesson({
 }: ImportLessonInput): Promise<LessonView> {
   const cefrLevel = getAppSettings().targetLevel;
   const prompts = buildImportLessonPrompts({ text, title, cefrLevel });
-  const analysis = await getLLMProvider().generateStructuredJSON(
-    prompts.systemPrompt,
-    prompts.userPrompt,
-    ImportedLessonAnalysisSchema,
-  );
+  let analysis: ReturnType<typeof ImportedLessonAnalysisSchema.parse>;
+  try {
+    analysis = await getLLMProvider().generateStructuredJSON(
+      prompts.systemPrompt,
+      prompts.userPrompt,
+      ImportedLessonAnalysisSchema,
+    );
+  } catch (error) {
+    console.warn("[lessons:import] Validation details:", error);
+    throw error;
+  }
   const payload: LessonViewPayload = {
     content_en: text,
     content_fr: analysis.translation_fr,
@@ -151,7 +157,10 @@ export async function importCustomLesson({
     quiz: analysis.quiz.map((question) => ({
       question: question.question_en,
       options: question.options,
-      answer_index: question.correct_index,
+      answer_index: Math.min(
+        Math.max(0, Number(question.correct_index) || 0),
+        question.options.length - 1,
+      ),
       explanation: question.explanation_fr,
     })),
   };
