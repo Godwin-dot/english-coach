@@ -34,13 +34,13 @@ export function ActivityHeatmap({
   return (
     <section
       aria-labelledby="activity-heatmap-title"
-      className="min-w-0 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7"
+      className="min-w-0 rounded-3xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-7"
     >
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2
             id="activity-heatmap-title"
-            className="text-lg font-semibold tracking-tight text-white"
+            className="text-lg font-semibold tracking-tight text-[#EDEDED]"
           >
             Activité · 12 semaines
           </h2>
@@ -49,7 +49,7 @@ export function ActivityHeatmap({
           </p>
         </div>
         <p className="text-sm text-zinc-300">
-          <span className="font-semibold tabular-nums text-white">
+          <span className="font-mono font-semibold tabular-nums text-[#EDEDED]">
             {activeDays}
           </span>{" "}
           / 84 jours actifs
@@ -91,7 +91,7 @@ export function ActivityHeatmap({
                 type="button"
                 title={description}
                 aria-label={description}
-                className={`aspect-square w-full min-w-0 rounded-[4px] border transition-colors duration-150 hover:ring-1 hover:ring-white/40 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-amber-200 ${intensityStyles[day.level]}`}
+                className={`aspect-square w-full min-w-0 rounded-[4px] border border-white/[0.08] transition-colors duration-150 hover:ring-1 hover:ring-white/40 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white ${intensityStyles[day.level]}`}
               />
             );
           }),

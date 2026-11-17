@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ActivityHeatmap } from "@/components/ActivityHeatmap";
-import { SettingsPanel } from "@/components/SettingsPanel";
+import {
+  formatInterestLabel,
+  SettingsPanel,
+} from "@/components/SettingsPanel";
 import type { DashboardStats } from "@/domain/stats";
 import type { AppSettings } from "@/schemas/settings";
 
@@ -55,8 +58,8 @@ export function DashboardWorkspace({
     <main className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-7 sm:pt-9">
       <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm text-zinc-400">{dateLabel}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">
+          <p className="font-mono text-sm tabular-nums text-zinc-400">{dateLabel}</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#EDEDED] sm:text-3xl">
             Votre pratique
           </h1>
         </div>
@@ -72,15 +75,11 @@ export function DashboardWorkspace({
         aria-label="Actions du jour"
         className="grid gap-3 lg:grid-cols-[1.35fr_0.85fr]"
       >
-        <article className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -right-24 -top-32 size-80 rounded-full bg-[radial-gradient(circle,rgba(245,158,11,0.12),transparent_68%)]"
-          />
+        <article className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-7">
           <div className="relative flex flex-wrap items-start justify-between gap-4">
             <div>
               <h2 className="text-sm font-medium text-zinc-300">À réviser</h2>
-              <p className="mt-4 font-serif text-6xl leading-none tracking-[-0.06em] tabular-nums text-white sm:text-7xl">
+              <p className="mt-4 font-mono text-4xl leading-none tracking-tight tabular-nums text-[#EDEDED] sm:text-5xl">
                 {reviewableCards}
               </p>
               <p className="mt-3 text-sm text-zinc-400">
@@ -101,9 +100,9 @@ export function DashboardWorkspace({
                 </p>
               ) : null}
             </div>
-            <div className="rounded-2xl border border-white/[0.08] bg-black/20 px-4 py-3 text-right">
+            <div className="rounded-2xl border border-white/[0.08] bg-[#111111] px-4 py-3 text-right">
               <p className="text-xs text-zinc-500">Déjà révisées</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-white">
+              <p className="mt-1 font-mono text-2xl font-semibold tabular-nums text-[#EDEDED]">
                 {stats.reviewsToday}
               </p>
               <p className="text-xs text-zinc-500">aujourd’hui</p>
@@ -112,26 +111,27 @@ export function DashboardWorkspace({
           <div className="relative mt-7 flex flex-wrap items-center gap-3">
             <Link
               href="/session"
-              className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition-colors duration-150 hover:bg-zinc-200 active:scale-[0.98]"
+              className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#EDEDED] px-5 text-sm font-medium text-[#0A0A0A] transition-colors duration-150 hover:bg-white active:scale-[0.98]"
             >
-              Lancer ma session du jour · 10 min →
+              Démarrer ma session de 10 min
             </Link>
             {reviewableCards > 0 ? (
               <Link
                 href="/review"
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.04] px-5 text-sm font-medium text-zinc-100 transition-colors duration-150 hover:bg-white/[0.09] active:scale-[0.98]"
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/[0.12] bg-[#0A0A0A] px-5 text-sm font-medium text-zinc-100 transition-colors duration-150 hover:border-white/[0.22] hover:bg-[#141414] active:scale-[0.98]"
               >
                 Continuer les révisions
               </Link>
             ) : (
-              <span className="inline-flex min-h-11 items-center rounded-full border border-emerald-300/20 bg-emerald-300/[0.07] px-4 text-sm text-emerald-100">
+              <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-4 text-sm text-zinc-300">
+                <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-400" />
                 {stats.totalDueCards ? "Plafond atteint" : "Tout est à jour"}
               </span>
             )}
           </div>
         </article>
 
-        <article className="flex flex-col justify-between rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7">
+        <article className="flex flex-col justify-between rounded-3xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-7">
           <div>
             <h2 className="text-sm font-medium text-zinc-300">Nouvelle leçon</h2>
             <p className="mt-4 text-2xl font-semibold tracking-tight text-white">
@@ -152,7 +152,7 @@ export function DashboardWorkspace({
           </div>
           <Link
             href="/lesson"
-            className="mt-6 inline-flex min-h-11 w-fit items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.04] px-5 text-sm font-medium text-zinc-100 transition-colors duration-150 hover:bg-white/[0.09] active:scale-[0.98]"
+            className="mt-6 inline-flex min-h-11 w-fit items-center justify-center rounded-full border border-white/[0.12] bg-[#0A0A0A] px-5 text-sm font-medium text-zinc-100 transition-colors duration-150 hover:border-white/[0.22] hover:bg-[#141414] active:scale-[0.98]"
           >
             Créer une micro-leçon
           </Link>
@@ -161,10 +161,10 @@ export function DashboardWorkspace({
 
       <Link
         href="/drill"
-        className="group mt-3 flex min-h-20 flex-wrap items-center justify-between gap-4 rounded-3xl border border-violet-300/[0.14] bg-[#111114] px-5 py-4 transition-colors duration-150 hover:border-violet-300/30 hover:bg-white/[0.035] sm:px-7"
+        className="group mt-3 flex min-h-20 flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/[0.08] bg-[#0A0A0A] px-5 py-4 transition-colors duration-150 hover:border-white/[0.18] hover:bg-[#111111] sm:px-7"
       >
         <span className="flex items-center gap-4">
-          <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-violet-300/[0.09] text-violet-200">
+          <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-white/[0.04] text-zinc-300">
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="size-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 5h10M9 3v2c0 4-2 7-5 9m2-5c1.2 1.7 2.8 3 4.5 4" />
               <path d="M13 18h8m-7-3 3-7 3 7m-5-2h4" />
@@ -172,7 +172,7 @@ export function DashboardWorkspace({
           </span>
           <span>
             <span className="block text-sm font-medium text-zinc-100">
-              Traduction active FR → EN
+              Traduction FR → EN
             </span>
             <span className="mt-1 block text-sm text-zinc-400">
               Entraînez-vous à produire vos mots et expressions.
@@ -189,10 +189,10 @@ export function DashboardWorkspace({
 
       <Link
         href="/chat"
-        className="group mt-3 flex min-h-20 flex-wrap items-center justify-between gap-4 rounded-3xl border border-amber-200/[0.14] bg-[#111114] px-5 py-4 transition-colors duration-150 hover:border-amber-200/30 hover:bg-white/[0.035] sm:px-7"
+        className="group mt-3 flex min-h-20 flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/[0.08] bg-[#0A0A0A] px-5 py-4 transition-colors duration-150 hover:border-white/[0.18] hover:bg-[#111111] sm:px-7"
       >
         <span className="flex items-center gap-4">
-          <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-amber-200/[0.09] text-amber-100">
+          <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-white/[0.04] text-zinc-300">
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="size-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3 2v-6.5A7.5 7.5 0 0 1 10.5 7H12" />
               <path d="M15.5 3.5h5m-2.5-2.5v5" />
@@ -216,10 +216,10 @@ export function DashboardWorkspace({
       {mistakeCount >= 2 ? (
         <Link
           href="/history?tab=lessons&quiz=top"
-          className="group mt-3 flex min-h-16 flex-wrap items-center justify-between gap-3 rounded-3xl border border-rose-200/[0.12] bg-[#111114] px-5 py-4 transition-colors duration-150 hover:border-rose-200/25 hover:bg-white/[0.035] sm:px-7"
+          className="group mt-3 flex min-h-16 flex-wrap items-center justify-between gap-3 rounded-3xl border border-white/[0.08] bg-[#0A0A0A] px-5 py-4 transition-colors duration-150 hover:border-white/[0.18] hover:bg-[#111111] sm:px-7"
         >
           <span>
-            <span className="block text-sm font-medium text-rose-100">
+            <span className="block text-sm font-medium text-zinc-200">
               Point de vigilance
             </span>
             <span className="mt-1 block text-sm text-zinc-400">
@@ -242,18 +242,18 @@ export function DashboardWorkspace({
           activeDays={stats.activeDays84d}
         />
 
-        <article className="min-w-0 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7">
+        <article className="min-w-0 rounded-3xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-7">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-lg font-semibold tracking-tight text-white">
-                Vocabulaire & progression
+              <h2 className="text-lg font-semibold tracking-tight text-[#EDEDED]">
+                Vocabulaire et progression
               </h2>
               <p className="mt-1 text-sm text-zinc-400">
-                Maturité de votre deck et tendance des scores.
+                Répartition des cartes et évolution des scores.
               </p>
             </div>
             <span className="shrink-0 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-zinc-300">
-              <span className="tabular-nums">{deckBreakdown.total}</span>{" "}
+              <span className="font-mono tabular-nums">{deckBreakdown.total}</span>{" "}
               cartes
             </span>
           </div>
@@ -286,7 +286,7 @@ export function DashboardWorkspace({
                   <span className={`size-2 shrink-0 rounded-full ${segment.color}`} />
                   <span className="truncate">{segment.label}</span>
                 </p>
-                <p className="mt-1 text-lg font-semibold tabular-nums text-white">
+                <p className="mt-1 font-mono text-lg font-semibold tabular-nums text-[#EDEDED]">
                   {segment.value}
                 </p>
               </div>
@@ -297,9 +297,9 @@ export function DashboardWorkspace({
             <div className="flex items-end justify-between gap-3">
               <div>
                 <p className="text-xs text-zinc-400">Moyenne des évaluations récentes</p>
-                <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-white">
+                <p className="mt-1 font-mono text-3xl font-semibold tabular-nums tracking-tight text-[#EDEDED]">
                   {recentAverageScore.currentAvg === null
-                    ? "—"
+                    ? "Pas encore"
                     : `${recentAverageScore.currentAvg.toLocaleString("fr-FR", {
                         minimumFractionDigits: 1,
                         maximumFractionDigits: 1,
@@ -321,14 +321,14 @@ export function DashboardWorkspace({
               </p>
             </div>
             <p className="mt-1 text-xs text-zinc-500">
-              <span className="tabular-nums">{recentAverageScore.sampleCount}</span>{" "}
+              <span className="font-mono tabular-nums">{recentAverageScore.sampleCount}</span>{" "}
               / 10 dernières évaluations
             </p>
           </div>
 
-          <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/[0.07] bg-black/20 px-4 py-3">
-            <span className="text-sm text-zinc-400">Étude · 7 derniers jours</span>
-            <span className="text-sm font-semibold tabular-nums text-white">
+          <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/[0.08] bg-[#111111] px-4 py-3">
+            <span className="text-sm text-zinc-400">Étude, 7 derniers jours</span>
+            <span className="font-mono text-sm font-semibold tabular-nums text-[#EDEDED]">
               {stats.weeklyStudyMinutes} min
             </span>
           </div>
@@ -337,13 +337,13 @@ export function DashboardWorkspace({
 
       <section
         aria-labelledby="weekly-progress-title"
-        className="mt-3 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7"
+        className="mt-3 rounded-3xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-7"
       >
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h2
               id="weekly-progress-title"
-              className="text-lg font-semibold tracking-tight text-white"
+              className="text-lg font-semibold tracking-tight text-[#EDEDED]"
             >
               Votre semaine
             </h2>
@@ -354,7 +354,7 @@ export function DashboardWorkspace({
             </p>
           </div>
           <p className="text-sm text-zinc-300">
-            <span className="font-semibold tabular-nums text-white">
+            <span className="font-mono font-semibold tabular-nums text-[#EDEDED]">
               {stats.activeDaysThisWeek}
             </span>{" "}
             / {appSettings.weeklyGoalDays} jours
@@ -370,7 +370,7 @@ export function DashboardWorkspace({
               }`}
               className={`flex min-h-[68px] flex-col items-center justify-center gap-2 rounded-2xl border text-xs transition-colors duration-150 ${
                 day.isToday
-                  ? "border-white/[0.18] bg-white/[0.07] text-white"
+                  ? "border-white/[0.18] bg-white/[0.07] text-[#EDEDED]"
                   : "border-white/[0.06] bg-black/15 text-zinc-500"
               }`}
             >
@@ -385,9 +385,9 @@ export function DashboardWorkspace({
           ))}
         </div>
         <p className="mt-4 text-xs text-zinc-500">
-          {countLabel(stats.totalCards, "carte dans votre deck", "cartes dans votre deck")}
+          {countLabel(stats.totalCards, "carte dans votre collection", "cartes dans votre collection")}
           {" · "}objectif de{" "}
-          <span className="tabular-nums">{appSettings.weeklyGoalDays}</span> jours
+          <span className="font-mono tabular-nums">{appSettings.weeklyGoalDays}</span> jours
           par semaine
         </p>
       </section>
@@ -395,7 +395,7 @@ export function DashboardWorkspace({
       {appSettings.interests.length ? (
         <section
           aria-labelledby="interests-title"
-          className="mt-3 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7"
+          className="mt-3 rounded-3xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-7"
         >
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -414,10 +414,10 @@ export function DashboardWorkspace({
             {appSettings.interests.map((interest) => (
               <Link
                 key={interest}
-                href={`/lesson?topic=${encodeURIComponent(interest)}`}
-                className="inline-flex min-h-10 items-center rounded-full border border-white/[0.09] bg-white/[0.035] px-4 text-sm text-zinc-300 transition-colors duration-150 hover:border-amber-200/25 hover:bg-amber-200/[0.06] hover:text-amber-100 active:scale-[0.98]"
+                href={`/lesson?topic=${encodeURIComponent(formatInterestLabel(interest))}`}
+                className="inline-flex min-h-10 items-center rounded-full border border-white/[0.12] bg-[#0A0A0A] px-4 text-sm text-zinc-300 transition-colors duration-150 hover:border-white/[0.22] hover:bg-[#141414] hover:text-[#EDEDED] active:scale-[0.98]"
               >
-                {interest}
+                {formatInterestLabel(interest)}
               </Link>
             ))}
           </div>

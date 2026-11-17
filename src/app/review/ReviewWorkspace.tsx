@@ -419,12 +419,8 @@ export function ReviewWorkspace({
 
   if (sessionFinished) {
     return (
-      <main className="animate-view-enter mx-auto flex min-h-[calc(100vh-7rem)] max-w-5xl items-center px-4 py-10 sm:px-8">
-        <section className="relative w-full overflow-hidden rounded-3xl border border-white/[0.08] bg-[#111114] px-6 py-10 text-center sm:px-12 sm:py-14">
-          <div
-            aria-hidden="true"
-            className="ambient-glow pointer-events-none absolute left-1/2 top-[-60%] size-[440px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(16,185,129,0.12),rgba(99,102,241,0.1)_48%,transparent_72%)] blur-2xl"
-          />
+      <main className="animate-view-enter mx-auto flex min-h-[calc(100dvh-7rem)] max-w-5xl items-center px-4 py-10 sm:px-8">
+        <section className="w-full overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0A0A0A] px-6 py-10 text-center sm:px-12 sm:py-14">
           <div className="relative mx-auto max-w-xl">
             <span className="mx-auto grid size-14 place-items-center rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.06] text-2xl text-emerald-200">
               ✓
@@ -432,7 +428,7 @@ export function ReviewWorkspace({
             <p className="mt-6 text-sm font-medium text-emerald-200">
               Belle régularité
             </p>
-            <h1 className="mt-2 font-serif text-4xl tracking-[-0.05em] text-white sm:text-5xl">
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#EDEDED] sm:text-3xl">
               Session terminée.
             </h1>
             <p className="mx-auto mt-4 max-w-lg text-sm leading-7 text-zinc-400">
@@ -467,7 +463,7 @@ export function ReviewWorkspace({
   if (!queueItem || !currentCard) {
     return (
       <main className="animate-view-enter mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
-        <section className="rounded-3xl border border-white/[0.08] bg-[#111114] p-6 text-center sm:p-10">
+        <section className="rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-6 text-center sm:p-10">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-left">
             <p className="text-sm font-medium text-amber-200/90">
               {discoveryMode
@@ -495,13 +491,13 @@ export function ReviewWorkspace({
             </div>
           </div>
           <p className="mb-5 text-xs text-zinc-400">
-            Dues : <span className="text-white">{dueRemaining}</span>
+            À réviser&nbsp;: <span className="font-mono tabular-nums text-white">{dueRemaining}</span>
             <span className="mx-2 text-zinc-700">·</span>
-            Révisées : <span className="text-white">{reviewedCount}</span>
+            Révisées&nbsp;: <span className="font-mono tabular-nums text-white">{reviewedCount}</span>
           </p>
           {discoveryMode ? (
             <div className="mb-5 rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.045] px-4 py-3 text-sm text-emerald-100">
-              Cartes du jour terminées — préparation de nouveaux mots.
+              Les cartes du jour sont terminées. Préparez de nouveaux mots.
             </div>
           ) : null}
           <div
@@ -559,7 +555,7 @@ export function ReviewWorkspace({
               ? "Nouveau vocabulaire · Découverte infinie"
               : "Révisions espacées avec FSRS"}
           </p>
-          <h1 className="mt-2 font-serif text-4xl tracking-[-0.05em] text-white sm:text-5xl">
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#EDEDED] sm:text-3xl">
             À vous de jouer.
           </h1>
         </div>
@@ -589,11 +585,11 @@ export function ReviewWorkspace({
       <section aria-label="Progression de la session" className="mb-5">
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-xs">
           <p className="font-medium text-zinc-300">
-            Dues :{" "}
-            <span className="tabular-nums text-white">{dueRemaining}</span>
+            À réviser&nbsp;:{" "}
+            <span className="font-mono tabular-nums text-white">{dueRemaining}</span>
             <span className="mx-2 text-zinc-700">·</span>
-            Révisées :{" "}
-            <span className="tabular-nums text-white">{reviewedCount}</span>
+            Révisées&nbsp;:{" "}
+            <span className="font-mono tabular-nums text-white">{reviewedCount}</span>
           </p>
           <p className="text-zinc-500">
             {discoveryMode
@@ -606,7 +602,7 @@ export function ReviewWorkspace({
       {discoveryMode ? (
         <div className="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.045] px-4 py-3 text-sm text-emerald-100">
           <span>
-            Cartes du jour terminées — place à la découverte de nouveaux mots.
+            Les cartes du jour sont terminées. Vous pouvez découvrir de nouveaux mots.
           </span>
           {loadingMore ? (
             <span className="text-xs text-emerald-100/70">
@@ -618,11 +614,7 @@ export function ReviewWorkspace({
 
       <div className="review-scene min-h-[430px]">
         <div className={`review-card-inner ${revealed ? "is-flipped" : ""}`}>
-          <article className="review-card-face review-card-front flex min-h-[430px] flex-col items-center justify-center rounded-3xl border border-white/[0.08] bg-[#111114] px-5 py-8 text-center sm:px-10">
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute left-1/2 top-0 size-72 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(245,158,11,0.09),rgba(99,102,241,0.06)_45%,transparent_72%)] blur-2xl"
-            />
+          <article className="review-card-face review-card-front flex min-h-[430px] flex-col items-center justify-center rounded-2xl border border-white/[0.08] bg-[#0A0A0A] px-5 py-8 text-center sm:px-10">
             <div className="relative flex items-center gap-3">
               <p className="text-xs font-medium text-zinc-400">
                 {queueItem.isDiscovery ? "Nouveau mot" : "English"}
@@ -646,7 +638,7 @@ export function ReviewWorkspace({
               onClick={() =>
                 setSession((current) => ({ ...current, revealed: true }))
               }
-              className="relative mt-9 inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-white px-6 text-sm font-medium text-zinc-950 transition-colors duration-150 hover:bg-zinc-200 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
+              className="relative mt-9 inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[#EDEDED] px-6 text-sm font-medium text-[#0A0A0A] transition-colors duration-150 hover:bg-white active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
             >
               Révéler la réponse <span aria-hidden="true">↓</span>
             </button>
@@ -655,7 +647,7 @@ export function ReviewWorkspace({
             </p>
           </article>
 
-          <article className="review-card-face review-card-back min-h-[430px] rounded-3xl border border-white/[0.08] bg-[#111114] px-5 py-7 sm:px-9 sm:py-8">
+          <article className="review-card-face review-card-back min-h-[430px] rounded-2xl border border-white/[0.08] bg-[#0A0A0A] px-5 py-7 sm:px-9 sm:py-8">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-zinc-400">

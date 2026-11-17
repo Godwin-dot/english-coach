@@ -16,7 +16,7 @@ function AudioRateControls({
     <div
       role="group"
       aria-label="Vitesse de lecture"
-      className="flex min-h-11 items-center gap-1 rounded-full border border-white/[0.07] bg-black/20 p-1"
+      className="flex min-h-11 items-center gap-1 rounded-full border border-white/[0.08] bg-[#0A0A0A] p-1"
     >
       {visibleRates.map((rate) => (
         <button
@@ -24,10 +24,10 @@ function AudioRateControls({
           type="button"
           aria-pressed={engine.rate === rate}
           onClick={() => engine.setRate(rate)}
-          className={`min-h-9 min-w-11 rounded-full px-2 text-xs tabular-nums transition-all duration-150 active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-amber-200 ${
+          className={`min-h-9 min-w-11 rounded-full px-2 font-mono text-xs tabular-nums transition-colors duration-150 active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white ${
             engine.rate === rate
-              ? "bg-white/[0.12] font-medium text-white"
-              : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200"
+              ? "bg-[#171717] font-medium text-[#EDEDED]"
+              : "text-zinc-400 hover:bg-[#111111] hover:text-zinc-200"
           }`}
         >
           {rate}x
@@ -50,16 +50,16 @@ function AudioSettingsControls({
       <div
         role="group"
         aria-label="Moteur vocal"
-        className="flex min-h-11 items-center gap-1 rounded-full border border-white/[0.07] bg-black/20 p-1"
+        className="flex min-h-11 items-center gap-1 rounded-full border border-white/[0.08] bg-[#0A0A0A] p-1"
       >
         <button
           type="button"
           aria-pressed={engine.engineMode === "browser"}
           onClick={() => engine.setEngineMode("browser")}
-          className={`min-h-9 rounded-full px-3 text-xs transition-all duration-150 active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-amber-200 ${
+          className={`min-h-9 rounded-full px-3 text-xs transition-colors duration-150 active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white ${
             engine.engineMode === "browser"
-              ? "bg-white/[0.12] font-medium text-white"
-              : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200"
+              ? "bg-[#171717] font-medium text-[#EDEDED]"
+              : "text-zinc-400 hover:bg-[#111111] hover:text-zinc-200"
           }`}
         >
           Navigateur
@@ -68,38 +68,46 @@ function AudioSettingsControls({
           type="button"
           aria-pressed={engine.engineMode === "kokoro"}
           onClick={() => engine.setEngineMode("kokoro")}
-          className={`min-h-9 rounded-full px-3 text-xs transition-all duration-150 active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-amber-200 ${
+          className={`min-h-9 rounded-full px-3 text-xs transition-colors duration-150 active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white ${
             engine.engineMode === "kokoro"
-              ? "bg-white/[0.12] font-medium text-white"
-              : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200"
+              ? "bg-[#171717] font-medium text-[#EDEDED]"
+              : "text-zinc-400 hover:bg-[#111111] hover:text-zinc-200"
           }`}
         >
-          {engine.kokoroStatus === "unloaded"
-            ? "Activer la voix Studio"
-            : "Studio · Kokoro"}
+          <span
+            aria-hidden="true"
+            className={`mr-1.5 inline-block size-1.5 rounded-full ${
+              engine.kokoroStatus === "ready"
+                ? "bg-emerald-400"
+                : engine.kokoroStatus === "loading"
+                  ? "bg-[#FBBF24]"
+                  : "bg-zinc-500"
+            }`}
+          />
+          Kokoro Studio (Local)
         </button>
       </div>
       {engine.engineMode === "kokoro" && engine.kokoroStatus !== "ready" ? (
         <div className="flex min-h-11 min-w-0 items-center gap-3 text-xs text-zinc-300">
           {engine.kokoroStatus === "loading" ? (
-            <span>Initialisation de la voix Studio…</span>
+            <span>Chargement de Kokoro Studio (Local)…</span>
           ) : engine.kokoroStatus === "error" ? (
             <>
-              <span>Voix Studio indisponible ; voix navigateur active.</span>
+              <span>Kokoro Studio (Local) indisponible. Le navigateur est disponible.</span>
               <button
                 type="button"
                 onClick={engine.initKokoroModel}
-                className="min-h-11 shrink-0 rounded-full border border-white/[0.1] bg-white/[0.05] px-3 text-xs text-white transition-all duration-150 hover:bg-white/[0.1] active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
+                className="min-h-11 shrink-0 rounded-full border border-white/[0.12] bg-[#0A0A0A] px-3 text-xs text-[#EDEDED] transition-colors duration-150 hover:border-white/[0.22] hover:bg-[#141414] active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 Réessayer
               </button>
             </>
           ) : (
-            <span>Modèle local · environ 80 Mo</span>
+            <span>            Modèle local, environ 80 Mo.</span>
           )}
         </div>
       ) : null}
-      <label className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/[0.07] px-3 text-xs text-zinc-400">
+      <label className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/[0.08] px-3 text-xs text-zinc-400">
         Accent
         <select
           aria-label="Accent anglais"
@@ -113,7 +121,7 @@ function AudioSettingsControls({
           <option value="en-GB">GB</option>
         </select>
       </label>
-      <label className="inline-flex min-h-11 min-w-0 max-w-full items-center gap-2 rounded-full border border-white/[0.07] px-3 text-xs text-zinc-400">
+      <label className="inline-flex min-h-11 min-w-0 max-w-full items-center gap-2 rounded-full border border-white/[0.08] px-3 text-xs text-zinc-400">
         Voix
         <select
           aria-label="Voix anglaise"
@@ -181,7 +189,7 @@ export function AudioPlayerBar({
   if (compact) {
     return (
       <div
-        className={`flex w-full min-w-0 flex-wrap items-center gap-2 rounded-xl border border-white/[0.08] bg-[#0E0E11] px-3 py-2 ${className}`}
+        className={`flex w-full min-w-0 flex-wrap items-center gap-2 rounded-xl border border-white/[0.08] bg-[#0A0A0A] px-3 py-2 ${className}`}
         aria-label="Réglages audio partagés"
       >
         <AudioSettingsControls engine={engine} visibleRates={rates} />
@@ -189,9 +197,9 @@ export function AudioPlayerBar({
           <button
             type="button"
             onClick={engine.stop}
-            className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.035] px-3 text-xs text-zinc-300 transition-all duration-150 hover:bg-white/[0.08] active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/[0.12] bg-[#0A0A0A] px-3 text-xs text-zinc-300 transition-colors duration-150 hover:border-white/[0.22] hover:bg-[#141414] active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           >
-            Stop
+            Arrêter
           </button>
         ) : null}
       </div>
@@ -210,7 +218,7 @@ export function AudioPlayerBar({
 
   return (
     <div
-      className={`flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-white/[0.08] bg-[#0E0E11] px-3 py-2 ${className}`}
+      className={`flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-white/[0.08] bg-[#0A0A0A] px-3 py-2 ${className}`}
       aria-label="Lecteur vocal"
     >
       <button
@@ -224,7 +232,7 @@ export function AudioPlayerBar({
               ? "Reprendre la lecture"
               : "Écouter"
         }
-        className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-white px-4 text-sm font-medium text-zinc-950 transition-all duration-150 hover:bg-zinc-200 active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200 disabled:opacity-40"
+        className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#EDEDED] px-4 text-sm font-medium text-[#0A0A0A] transition-colors duration-150 hover:bg-white active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40"
       >
         <span aria-hidden="true">{isPlaying ? "Ⅱ" : "▶"}</span>
         {isPlaying ? "Pause" : isPaused ? "Reprendre" : "Écouter"}
@@ -234,9 +242,9 @@ export function AudioPlayerBar({
         <button
           type="button"
           onClick={engine.stop}
-          className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.035] px-3 text-xs text-zinc-300 transition-all duration-150 hover:bg-white/[0.08] active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
+          className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/[0.12] bg-[#0A0A0A] px-3 text-xs text-zinc-300 transition-colors duration-150 hover:border-white/[0.22] hover:bg-[#141414] active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
-          Stop
+          Arrêter
         </button>
       ) : null}
       {mode !== "full" ? (

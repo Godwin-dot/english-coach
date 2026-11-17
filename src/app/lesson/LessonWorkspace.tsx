@@ -87,7 +87,7 @@ function WordCard({
   }
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-white/[0.035] p-5 shadow-xl backdrop-blur-md">
+    <article className="rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5">
       <p className="text-xs font-medium text-indigo-200">
         Fiche vocabulaire
       </p>
@@ -150,7 +150,7 @@ function WordCard({
           : reviewStatus === "added"
             ? "Ajoutée aux révisions ✓"
             : reviewStatus === "already_exists"
-              ? "Déjà dans ton deck"
+              ? "Déjà ajouté à vos cartes"
               : reviewStatus === "daily_cap_reached"
                 ? "Plafond quotidien atteint"
                 : "+ Ajouter aux révisions"}
@@ -344,7 +344,7 @@ function RecentLessons({
                 <span className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
                   <span>{lesson.cefrLevel}</span>
                   <span aria-hidden="true">·</span>
-                  <time dateTime={lesson.createdAt}>
+                  <time className="font-mono tabular-nums" dateTime={lesson.createdAt}>
                     {new Intl.DateTimeFormat("fr-FR", {
                       day: "numeric",
                       month: "short",
@@ -730,8 +730,8 @@ export function LessonWorkspace({
           <p className="text-sm font-medium text-indigo-200">
             Pratique guidée
           </p>
-          <h1 className="mt-2 font-serif text-4xl tracking-[-0.04em] text-slate-50 sm:text-5xl">
-            Une leçon, votre monde.
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#EDEDED] sm:text-3xl">
+            Une leçon à votre niveau
           </h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
             Un texte vivant, quelques mots à retenir et une courte vérification
@@ -783,7 +783,7 @@ export function LessonWorkspace({
             : "grid items-start gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(280px,0.65fr)]"
         }
       >
-        <section className="page-enter rounded-3xl border border-white/[0.08] bg-[#111114] p-5 shadow-xl sm:p-7">
+        <section className="page-enter rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-7">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className="grid size-10 place-items-center rounded-xl bg-indigo-400/10 text-indigo-200">
@@ -857,7 +857,7 @@ export function LessonWorkspace({
                 maxLength={120}
                 required
                 placeholder="Ex. les jardins urbains, l’art de la négociation…"
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950/70 px-4 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-indigo-400/70 focus:ring-4 focus:ring-indigo-400/10"
+                className="h-10 w-full rounded-lg border border-white/[0.12] bg-[#000000] px-4 text-sm text-[#EDEDED] outline-none transition-colors duration-150 placeholder:text-zinc-500 focus:border-white/[0.3] focus:ring-2 focus:ring-white/[0.08]"
               />
             </div>
 
@@ -892,7 +892,7 @@ export function LessonWorkspace({
                   onChange={(event) =>
                     setLevel(CEFRLevelSchema.parse(event.target.value))
                   }
-                  className="h-11 w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3.5 text-sm text-slate-100 outline-none focus:border-indigo-400/70"
+                  className="h-10 w-full rounded-lg border border-white/[0.12] bg-[#000000] px-3.5 text-sm text-[#EDEDED] outline-none focus:border-white/[0.3]"
                 >
                   {cefrLevels.map((cefrLevel) => (
                     <option key={cefrLevel} value={cefrLevel}>
@@ -904,7 +904,7 @@ export function LessonWorkspace({
               <button
                 type="submit"
                 disabled={isGenerating || !isConfigured}
-                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-medium text-zinc-950 shadow-lg shadow-white/5 transition-colors duration-150 hover:bg-zinc-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:ml-auto sm:w-auto"
+                className="flex h-10 w-full items-center justify-center gap-2 rounded-full bg-[#EDEDED] px-5 text-sm font-medium text-[#0A0A0A] transition-colors duration-150 hover:bg-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:ml-auto sm:w-auto"
               >
                 {isGenerating ? (
                   <>
@@ -944,7 +944,7 @@ export function LessonWorkspace({
                   onChange={(event) => setImportTitle(event.target.value)}
                   maxLength={120}
                   placeholder="Ex. A practical guide to API design"
-                  className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950/70 px-4 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-indigo-400/70 focus:ring-4 focus:ring-indigo-400/10"
+                  className="h-10 w-full rounded-lg border border-white/[0.12] bg-[#000000] px-4 text-sm text-[#EDEDED] outline-none transition-colors duration-150 placeholder:text-zinc-500 focus:border-white/[0.3] focus:ring-2 focus:ring-white/[0.08]"
                 />
               </div>
               <div>
@@ -975,7 +975,7 @@ export function LessonWorkspace({
                   required
                   rows={9}
                   placeholder="Collez ici un extrait authentique en anglais…"
-                  className="w-full resize-y rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm leading-6 text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-indigo-400/70 focus:ring-4 focus:ring-indigo-400/10"
+                  className="w-full resize-y rounded-lg border border-white/[0.12] bg-[#000000] px-4 py-3 text-sm leading-6 text-[#EDEDED] outline-none transition-colors duration-150 placeholder:text-zinc-500 focus:border-white/[0.3] focus:ring-2 focus:ring-white/[0.08]"
                 />
                 <p className="mt-2 text-xs leading-5 text-slate-500">
                   De 80 à 3 500 caractères. Le texte original sera conservé
@@ -994,7 +994,7 @@ export function LessonWorkspace({
                     !isConfigured ||
                     importText.trim().length < 80
                   }
-                  className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-medium text-zinc-950 shadow-lg shadow-white/5 transition-colors duration-150 hover:bg-zinc-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:ml-auto sm:w-auto"
+                  className="flex h-10 w-full items-center justify-center gap-2 rounded-full bg-[#EDEDED] px-5 text-sm font-medium text-[#0A0A0A] transition-colors duration-150 hover:bg-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:ml-auto sm:w-auto"
                 >
                   {isGenerating ? (
                     <>
@@ -1033,7 +1033,7 @@ export function LessonWorkspace({
       </div>
 
       {lesson ? (
-        <article className="page-enter-delayed mt-6 rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-xl sm:p-8">
+        <article className="page-enter-delayed mt-6 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-8">
           <header className="flex flex-col gap-4 border-b border-slate-800 pb-5 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -1197,7 +1197,7 @@ export function LessonWorkspace({
           </div>
         </article>
       ) : (
-        <section className="page-enter-delayed mt-6 rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 px-6 py-12 text-center">
+        <section className="page-enter-delayed mt-6 rounded-2xl border border-dashed border-white/[0.12] bg-[#0A0A0A] px-6 py-12 text-center">
           <p className="font-serif text-2xl text-slate-200">
             La prochaine histoire commence ici.
           </p>

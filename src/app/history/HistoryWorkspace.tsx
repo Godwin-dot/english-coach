@@ -154,7 +154,7 @@ export function HistoryWorkspace({
           translationScores.reduce((total, score) => total + score, 0) /
           translationScores.length
         ).toLocaleString("fr-FR", { maximumFractionDigits: 1 })
-      : "—";
+      : "Aucun score";
 
   async function deleteItem(kind: "card" | "lesson" | "mistake", id: number) {
     const key = `${kind}-${id}`;
@@ -298,38 +298,38 @@ export function HistoryWorkspace({
     <main className="animate-view-enter mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-7 sm:pt-9">
       <header className="mb-6">
         <p className="text-sm text-zinc-400">Votre parcours, à votre rythme</p>
-        <h1 className="mt-1 font-serif text-3xl tracking-[-0.04em] text-white sm:text-4xl">
-          Historique & entraînement libre
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#EDEDED] sm:text-3xl">
+          Historique et entraînement libre
         </h1>
         <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
             {
               label: "Cartes maîtrisées",
               value: allCards.filter((card) => card.reps >= 1).length,
-              color: "text-amber-100",
+              color: "text-[#EDEDED]",
             },
             {
               label: "À réviser",
               value: allCards.filter((card) => card.isDue).length,
-              color: "text-rose-100",
+              color: "text-[#EDEDED]",
             },
             {
               label: "Score moyen en traduction",
               value: averageTranslationScore,
-              color: "text-violet-100",
+              color: "text-[#EDEDED]",
             },
             {
               label: "Leçons terminées",
               value: allLessons.filter((lesson) => lesson.completedAt !== null).length,
-              color: "text-emerald-100",
+              color: "text-[#EDEDED]",
             },
           ].map(({ label, value, color }) => (
             <section
               key={label}
-              className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#111114] px-3.5 py-3.5 sm:px-4"
+              className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] px-3.5 py-3.5 sm:px-4"
             >
               <p className="text-xs leading-5 text-zinc-400">{label}</p>
-              <p className={`mt-1 text-2xl font-semibold tabular-nums ${color}`}>
+              <p className={`mt-1 font-mono text-2xl font-semibold tabular-nums ${color}`}>
                 {value}
               </p>
             </section>
@@ -350,9 +350,9 @@ export function HistoryWorkspace({
       >
         {(
           [
-            ["vocabulary", "Vocabulaire & Deck"],
+            ["vocabulary", "Vocabulaire et cartes"],
             ["translations", "Traductions"],
-            ["lessons", "Leçons & Erreurs"],
+            ["lessons", "Leçons et erreurs"],
           ] as const
         ).map(([tab, label]) => (
           <button
@@ -360,7 +360,7 @@ export function HistoryWorkspace({
             type="button"
             onClick={() => setTab(tab)}
             aria-pressed={activeTab === tab}
-            className={`min-h-11 rounded-full border px-4 text-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-200 ${
+            className={`min-h-11 rounded-full border px-4 text-sm transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white ${
               activeTab === tab
                 ? "border-white bg-white text-zinc-950"
                 : "border-white/[0.09] bg-white/[0.035] text-zinc-300 hover:bg-white/[0.07]"
@@ -372,10 +372,10 @@ export function HistoryWorkspace({
       </nav>
 
       {activeTab === "vocabulary" ? (
-        <section className="min-w-0 rounded-3xl border border-white/[0.08] bg-[#111114] p-4 sm:p-6">
+        <section className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-4 sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <label className="block min-w-0 flex-1 text-sm font-medium text-zinc-300">
-              Rechercher dans le deck
+              Rechercher parmi les cartes
               <input
                 type="search"
                 value={search}
@@ -447,7 +447,7 @@ export function HistoryWorkspace({
                 <>
                   <div className="review-scene mt-5">
                     <div className={`practice-card-inner ${showBack ? "is-flipped" : ""}`}>
-                      <article className="review-card-face flex min-h-[230px] flex-col items-center justify-center rounded-2xl border border-white/[0.07] bg-[#111114] p-5 text-center">
+                      <article className="review-card-face flex min-h-[230px] flex-col items-center justify-center rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 text-center">
                         <p className="text-xs text-zinc-500">Terme anglais</p>
                         <p className="mt-3 max-w-full break-words font-serif text-3xl leading-tight text-white sm:text-4xl">
                           {activeCard.term}
@@ -458,7 +458,7 @@ export function HistoryWorkspace({
                           </p>
                         ) : null}
                       </article>
-                      <article className="review-card-face review-card-back flex min-h-[230px] flex-col items-center justify-center rounded-2xl border border-white/[0.07] bg-[#111114] p-5 text-center">
+                      <article className="review-card-face review-card-back flex min-h-[230px] flex-col items-center justify-center rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 text-center">
                         <p className="text-xs text-zinc-500">Traduction française</p>
                         <p className="mt-3 max-w-full break-words font-serif text-3xl leading-tight text-white sm:text-4xl">
                           {activeCard.translation}
@@ -540,7 +540,7 @@ export function HistoryWorkspace({
           <div className="mt-5 divide-y divide-white/[0.06]">
             {filteredCards.length === 0 ? (
               <p className="py-8 text-center text-sm text-zinc-400">
-                Aucune carte ne correspond à cette recherche.
+                Aucun mot ne correspond à cette recherche. Modifiez le filtre ou ajoutez des mots depuis une leçon.
               </p>
             ) : (
               filteredCards.map((card) => (
@@ -624,21 +624,21 @@ export function HistoryWorkspace({
       {activeTab === "translations" ? (
         <section className="space-y-3">
           {history.drillHistory.length === 0 ? (
-            <div className="rounded-3xl border border-white/[0.08] bg-[#111114] p-7 text-center text-sm text-zinc-400">
-              Vos traductions évaluées apparaîtront ici.
+            <div className="rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-7 text-center text-sm text-zinc-400">
+              Vos traductions évaluées s’afficheront ici après votre premier exercice.
             </div>
           ) : (
             history.drillHistory.map((entry) => (
               <article
                 key={entry.id}
-                className="min-w-0 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-6"
+                className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-6"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <p className="min-w-0 flex-1 break-words font-serif text-lg leading-7 text-white">
                     {entry.frenchSentence || "Phrase française non disponible"}
                   </p>
-                  <span className="rounded-full border border-violet-200/15 bg-violet-200/[0.06] px-3 py-1.5 text-sm font-semibold tabular-nums text-violet-100">
-                    {entry.score === null ? "—" : entry.score.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}
+                  <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 font-mono text-sm font-semibold tabular-nums text-zinc-200">
+                    {entry.score === null ? "Non noté" : entry.score.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}
                     <span className="ml-1 text-xs font-medium">/ 10</span>
                   </span>
                 </div>
@@ -647,7 +647,7 @@ export function HistoryWorkspace({
                   {entry.userTranslation || "Tentative non disponible"}
                 </p>
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <time className="text-xs text-zinc-500" dateTime={entry.createdAt}>
+                  <time className="font-mono text-xs tabular-nums text-zinc-500" dateTime={entry.createdAt}>
                     {formatDateTime(entry.createdAt)}
                   </time>
                   {entry.frenchSentence ? (
@@ -667,7 +667,7 @@ export function HistoryWorkspace({
 
       {activeTab === "lessons" ? (
         <>
-        <section className="mb-3 rounded-3xl border border-amber-200/[0.12] bg-[#111114] p-5 sm:p-6">
+        <section className="mb-3 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-6">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="text-sm font-medium text-amber-100">Remédiation personnalisée</p>
@@ -748,14 +748,14 @@ export function HistoryWorkspace({
         </section>
 
         <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <section className="min-w-0 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-6">
+          <section className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-6">
             <h2 className="text-base font-semibold text-white">Leçons sauvegardées</h2>
             <p className="mt-1 text-sm text-zinc-400">
               Retrouvez un sujet et reprenez votre lecture.
             </p>
             <ul className="mt-4 divide-y divide-white/[0.06]">
               {allLessons.length === 0 ? (
-                <li className="py-6 text-sm text-zinc-400">Aucune leçon pour le moment.</li>
+                <li className="py-6 text-sm text-zinc-400">Aucune leçon enregistrée. Créez une micro-leçon pour commencer.</li>
               ) : (
                 allLessons.map((lesson) => (
                   <li key={lesson.id} className="flex min-w-0 items-center justify-between gap-3 py-3">
@@ -764,7 +764,9 @@ export function HistoryWorkspace({
                         {lesson.title ?? lesson.topic}
                       </p>
                       <p className="mt-1 text-xs text-zinc-500">
-                        {lesson.cefrLevel} · {formatDate(lesson.createdAt)}
+                        <span className="font-mono tabular-nums">
+                          {lesson.cefrLevel} · {formatDate(lesson.createdAt)}
+                        </span>
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
@@ -794,7 +796,7 @@ export function HistoryWorkspace({
             </ul>
           </section>
 
-          <section className="min-w-0 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-6">
+          <section className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-6">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold text-white">Journal des erreurs</h2>
@@ -815,7 +817,7 @@ export function HistoryWorkspace({
             </div>
             <div className="mt-4 space-y-3">
               {filteredMistakes.length === 0 ? (
-                <p className="py-6 text-sm text-zinc-400">Aucune erreur correspondante.</p>
+                <p className="py-6 text-sm text-zinc-400">Aucune erreur ne correspond au filtre. Essayez un autre terme.</p>
               ) : (
                 filteredMistakes.map((mistake) => (
                   <article
@@ -845,7 +847,7 @@ export function HistoryWorkspace({
                       </p>
                     ) : null}
                     <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                      <time className="text-[11px] text-zinc-500" dateTime={mistake.createdAt}>
+                      <time className="font-mono text-[11px] tabular-nums text-zinc-500" dateTime={mistake.createdAt}>
                         {formatDateTime(mistake.createdAt)}
                       </time>
                       <button

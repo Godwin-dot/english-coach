@@ -418,8 +418,8 @@ export function SessionWorkspace({
         }),
       });
       const statusText = {
-        created: "Ajouté au deck",
-        already_exists: "Déjà dans le deck",
+        created: "Ajouté aux cartes",
+        already_exists: "Déjà ajouté",
         daily_cap_reached: "Plafond quotidien atteint",
       }[result.status];
       setCardStatuses((current) => ({ ...current, [keyword.term]: statusText }));
@@ -538,7 +538,7 @@ export function SessionWorkspace({
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm text-zinc-400">Un parcours guidé, sans détour</p>
-          <h1 className="mt-1 font-serif text-3xl tracking-[-0.04em] text-white sm:text-4xl">
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#EDEDED] sm:text-3xl">
             Session express du jour
           </h1>
         </div>
@@ -557,20 +557,20 @@ export function SessionWorkspace({
 
       <section
         aria-label={`Étape ${Math.min(step, 3)} sur 3`}
-        className="mb-5 rounded-2xl border border-white/[0.08] bg-[#111114] p-4 sm:p-5"
+        className="mb-5 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-4 sm:p-5"
       >
         <div className="flex items-center justify-between gap-3 text-sm">
           <span className="font-medium text-zinc-100">
-            {step === 4 ? "Bilan de la session" : `Étape ${step} / 3`}
+            {step === 4 ? "Bilan de la session" : <span className="font-mono tabular-nums">Étape {step} / 3</span>}
           </span>
-          <span className="text-zinc-400">Session · 10 min</span>
+          <span className="font-mono tabular-nums text-zinc-400">Session de 10 min</span>
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2" aria-hidden="true">
           {[1, 2, 3].map((number) => (
             <span
               key={number}
               className={`h-1.5 rounded-full ${
-                step === 4 || number <= step ? "bg-amber-300" : "bg-white/[0.1]"
+                step === 4 || number <= step ? "bg-[#EDEDED]" : "bg-white/[0.1]"
               }`}
             />
           ))}
@@ -584,7 +584,7 @@ export function SessionWorkspace({
       ) : null}
 
       {step === 1 ? (
-        <section className="rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-8">
+        <section className="rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm font-medium text-amber-100">Échauffement FSRS</p>
@@ -685,8 +685,8 @@ export function SessionWorkspace({
       ) : null}
 
       {step === 2 ? (
-        <section className="rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-8">
-          <p className="text-sm font-medium text-violet-200">Micro-leçon ciblée · {cefrLevel}</p>
+        <section className="rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-8">
+          <p className="text-sm font-medium text-zinc-300">Micro-leçon ciblée, niveau {cefrLevel}</p>
           {lessonLoading ? (
             <div role="status" className="skeleton-shimmer mt-5 h-64 rounded-2xl border border-white/[0.06]">
               <span className="sr-only">Préparation de la micro-leçon…</span>
@@ -765,7 +765,7 @@ export function SessionWorkspace({
                       disabled={Boolean(cardStatuses[keyword.term])}
                       className="mt-2 min-h-10 rounded-full border border-white/[0.1] px-3 text-xs text-zinc-200 transition hover:bg-white/[0.07] disabled:cursor-default disabled:opacity-65"
                     >
-                      {cardStatuses[keyword.term] ?? "+ Ajouter au deck"}
+                      {cardStatuses[keyword.term] ?? "+ Ajouter aux cartes"}
                     </button>
                   </div>
                 ))}
@@ -855,7 +855,7 @@ export function SessionWorkspace({
       ) : null}
 
       {step === 3 ? (
-        <section className="rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-8">
+        <section className="rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-8">
           <p className="text-sm font-medium text-amber-100">Mise en pratique active · FR → EN</p>
           <h2 className="mt-2 font-serif text-2xl text-white">À vous de formuler</h2>
           {drillsLoading ? (
@@ -932,24 +932,24 @@ export function SessionWorkspace({
       ) : null}
 
       {step === 4 ? (
-        <section className="rounded-3xl border border-white/[0.08] bg-[#111114] p-6 text-center sm:p-10">
+        <section className="rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-6 text-center sm:p-10">
           <span className="mx-auto grid size-14 place-items-center rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.06] text-2xl text-emerald-200">
             ✓
           </span>
           <p className="mt-5 text-sm text-emerald-200">Session terminée</p>
-          <h2 className="mt-1 font-serif text-3xl tracking-[-0.04em] text-white">
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#EDEDED] sm:text-3xl">
             Votre pratique du jour
           </h2>
           <div className="mx-auto mt-7 grid max-w-2xl gap-3 text-left sm:grid-cols-2">
             {[
               ["Cartes révisées", `${reviewedCount}`],
               ["Mots ajoutés", `${new Set(addedWords).size}`],
-              ["Compréhension", quizScore === null ? "—" : `${quizScore} / 10`],
-              ["Traduction", translationScore === null ? "—" : `${translationScore} / 10`],
+              ["Compréhension", quizScore === null ? "Non évaluée" : `${quizScore} / 10`],
+              ["Traduction", translationScore === null ? "Non évaluée" : `${translationScore} / 10`],
             ].map(([label, value]) => (
               <div key={label} className="rounded-2xl border border-white/[0.07] bg-black/20 p-4">
                 <p className="text-xs text-zinc-400">{label}</p>
-                <p className="mt-2 text-2xl font-semibold tabular-nums text-white">{value}</p>
+                <p className="mt-2 font-mono text-2xl font-semibold tabular-nums text-[#EDEDED]">{value}</p>
               </div>
             ))}
           </div>

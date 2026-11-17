@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
-import { Inter, Lora } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
+const geist = Geist({
   variable: "--font-sans",
   subsets: ["latin"],
   display: "swap",
 });
 
-const lora = Lora({
-  variable: "--font-serif",
+const geistMono = Geist_Mono({
+  variable: "--font-mono",
   subsets: ["latin"],
   display: "swap",
 });
@@ -30,7 +30,7 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body
-        className={`${inter.variable} ${lora.variable} min-h-screen bg-slate-950 font-sans text-slate-100 antialiased`}
+        className={`${geist.variable} ${geistMono.variable} min-h-dvh bg-[#000000] font-sans text-[#EDEDED] antialiased`}
       >
         {children}
       </body>

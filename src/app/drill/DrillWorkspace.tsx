@@ -535,7 +535,7 @@ export function DrillWorkspace({
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm text-zinc-400">Pratiquez la production active</p>
-          <h1 className="mt-1 font-serif text-3xl tracking-[-0.04em] text-white sm:text-4xl">
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#EDEDED] sm:text-3xl">
             {mode === "dictation"
               ? "Dictée audio anglaise"
               : "Traduction française → anglaise"}
@@ -555,7 +555,7 @@ export function DrillWorkspace({
       <div
         role="group"
         aria-label="Mode d’entraînement"
-        className="mb-5 inline-flex max-w-full flex-wrap gap-1 rounded-full border border-white/[0.08] bg-[#111114] p-1"
+        className="mb-5 inline-flex max-w-full flex-wrap gap-1 rounded-full border border-white/[0.08] bg-[#0A0A0A] p-1"
       >
         {(
           [
@@ -583,7 +583,7 @@ export function DrillWorkspace({
 
       <section
         aria-label="Configuration de l’exercice"
-        className="mb-3 grid gap-3 rounded-3xl border border-white/[0.08] bg-[#111114] p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end sm:p-5"
+        className="mb-3 grid gap-3 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end sm:p-5"
       >
         <div className="min-w-0 space-y-3">
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px]">
@@ -594,7 +594,7 @@ export function DrillWorkspace({
                 onChange={(event) => setTopic(event.target.value)}
                 maxLength={120}
                 placeholder="Ex. préparer une présentation"
-                className="mt-2 h-11 w-full rounded-xl border border-white/[0.1] bg-black/25 px-3.5 text-sm text-zinc-100 outline-none transition focus:border-violet-200/40 focus:ring-2 focus:ring-violet-200/10"
+                className="mt-2 h-10 w-full rounded-lg border border-white/[0.12] bg-[#000000] px-3.5 text-sm text-zinc-100 outline-none transition-colors duration-150 focus:border-white/[0.3] focus:ring-2 focus:ring-white/[0.08]"
               />
             </label>
             <label className="block text-sm font-medium text-zinc-300">
@@ -604,7 +604,7 @@ export function DrillWorkspace({
                 onChange={(event) =>
                   setSelectedLevel(event.target.value as CEFRLevel)
                 }
-                className="mt-2 h-11 w-full rounded-xl border border-white/[0.1] bg-black/25 px-3.5 text-sm text-zinc-100 outline-none transition focus:border-violet-200/40 focus:ring-2 focus:ring-violet-200/10"
+                className="mt-2 h-10 w-full rounded-lg border border-white/[0.12] bg-[#000000] px-3.5 text-sm text-zinc-100 outline-none transition-colors duration-150 focus:border-white/[0.3] focus:ring-2 focus:ring-white/[0.08]"
               >
                 {(["A1", "A2", "B1", "B2", "C1", "C2"] as const).map((level) => (
                   <option key={level} value={level}>{level}</option>
@@ -622,7 +622,7 @@ export function DrillWorkspace({
                   aria-pressed={topic === interest}
                   className={`min-h-10 rounded-full border px-3.5 text-xs transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-200 ${
                     topic === interest
-                      ? "border-violet-200/30 bg-violet-200/[0.09] text-violet-100"
+                      ? "border-white/[0.18] bg-white/[0.07] text-[#EDEDED]"
                       : "border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:bg-white/[0.07]"
                   }`}
                 >
@@ -651,13 +651,13 @@ export function DrillWorkspace({
       </section>
 
       <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.75fr)]">
-        <section className="min-w-0 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7">
+        <section className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-7">
           {mode === "dictation" ? (
             dictationExercise ? (
               <>
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className="rounded-full border border-amber-300/[0.14] bg-amber-300/[0.07] px-3 py-1.5 text-xs font-medium text-amber-100">
-                    Dictée · {dictationExercise.cefr_level}
+                  <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-zinc-300">
+                    Dictée, {dictationExercise.cefr_level}
                   </span>
                   {dictationExercise.topic ? (
                     <span className="max-w-full break-words text-xs text-zinc-500">
@@ -776,7 +776,7 @@ export function DrillWorkspace({
                       {dictationExercise.translation_fr}
                     </p>
                     {dictationExercise.focus_note_fr ? (
-                      <p className="mt-4 rounded-xl border border-violet-200/[0.1] bg-violet-200/[0.04] px-3.5 py-3 text-sm leading-6 text-violet-100">
+                      <p className="mt-4 rounded-xl border border-white/[0.08] bg-[#111111] px-3.5 py-3 text-sm leading-6 text-zinc-300">
                         {dictationExercise.focus_note_fr}
                       </p>
                     ) : null}
@@ -813,7 +813,7 @@ export function DrillWorkspace({
                       maxLength={1000}
                       rows={4}
                       placeholder="Écrivez la phrase entendue…"
-                      className="mt-2 min-h-32 w-full resize-y rounded-2xl border border-white/[0.1] bg-black/25 px-4 py-3.5 text-base leading-7 text-zinc-100 outline-none transition focus:border-violet-200/40 focus:ring-2 focus:ring-violet-200/10 disabled:opacity-70"
+                      className="mt-2 min-h-32 w-full resize-y rounded-xl border border-white/[0.12] bg-[#000000] px-4 py-3.5 text-base leading-7 text-zinc-100 outline-none transition-colors duration-150 focus:border-white/[0.3] focus:ring-2 focus:ring-white/[0.08] disabled:opacity-70"
                     />
                     <button
                       type="button"
@@ -860,8 +860,8 @@ export function DrillWorkspace({
           ) : exercise ? (
             <>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <span className="rounded-full border border-violet-300/[0.14] bg-violet-300/[0.07] px-3 py-1.5 text-xs font-medium text-violet-100">
-                  Exercice · {exercise.cefrLevel}
+                <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-zinc-300">
+                  Exercice, {exercise.cefrLevel}
                 </span>
                 <span className="text-xs text-zinc-500">
                   {exercise.focus_grammar}
@@ -918,7 +918,7 @@ export function DrillWorkspace({
                 maxLength={500}
                 rows={4}
                 placeholder="Écrivez votre phrase en anglais…"
-                className="mt-2 min-h-32 w-full resize-y rounded-2xl border border-white/[0.1] bg-black/25 px-4 py-3.5 text-base leading-7 text-zinc-100 outline-none transition focus:border-violet-200/40 focus:ring-2 focus:ring-violet-200/10 disabled:opacity-70"
+                className="mt-2 min-h-32 w-full resize-y rounded-xl border border-white/[0.12] bg-[#000000] px-4 py-3.5 text-base leading-7 text-zinc-100 outline-none transition-colors duration-150 focus:border-white/[0.3] focus:ring-2 focus:ring-white/[0.08] disabled:opacity-70"
               />
               <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
                 {microphoneSupported ? (
@@ -1009,7 +1009,7 @@ export function DrillWorkspace({
           {mode === "translation" && evaluation ? (
             <section
               aria-live="polite"
-              className="animate-fade-in-up min-w-0 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-6"
+              className="animate-fade-in-up min-w-0 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-6"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -1069,8 +1069,8 @@ export function DrillWorkspace({
                 </div>
               </div>
 
-              <div className="mt-5 rounded-2xl border border-violet-200/[0.1] bg-violet-200/[0.04] p-4">
-                <p className="text-sm font-medium text-violet-100">
+              <div className="mt-5 rounded-2xl border border-white/[0.08] bg-[#111111] p-4">
+                <p className="text-sm font-medium text-zinc-200">
                   À retenir
                 </p>
                 <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-zinc-300">
@@ -1121,7 +1121,7 @@ export function DrillWorkspace({
             </section>
           ) : null}
 
-          <section className="min-w-0 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-6">
+          <section className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold text-white">

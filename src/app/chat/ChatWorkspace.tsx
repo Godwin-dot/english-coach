@@ -40,7 +40,7 @@ const scenarios = [
       "I have been thinking about how technology changes the way we tell stories. What have you read or discovered lately?",
   },
   {
-    label: "Voyage & hôtel",
+    label: "Voyage et hôtel",
     opening:
       "Hello, welcome to the hotel. What brings you to town, and how can I make your stay more comfortable?",
   },
@@ -538,7 +538,7 @@ export function ChatWorkspace({
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm text-zinc-400">Expression spontanée</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#EDEDED] sm:text-3xl">
             Conversation
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
@@ -546,7 +546,7 @@ export function ChatWorkspace({
             et des conseils personnalisés en français.
           </p>
         </div>
-        <span className="rounded-full border border-amber-200/15 bg-amber-200/[0.06] px-3 py-1.5 text-xs font-medium text-amber-100">
+        <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 font-mono text-xs font-medium text-zinc-300">
           Niveau {selectedLevel}
         </span>
       </header>
@@ -556,10 +556,10 @@ export function ChatWorkspace({
       <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="order-last min-w-0 lg:order-first">
           {!sessionId ? (
-        <section className="rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7">
+        <section className="rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-7">
           <div className="max-w-2xl">
             <p className="text-xs font-medium text-amber-200">Choisissez votre scène</p>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight text-white">
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-[#EDEDED]">
               Où aimeriez-vous pratiquer ?
             </h2>
             <p className="mt-1 text-sm leading-6 text-zinc-400">
@@ -579,8 +579,8 @@ export function ChatWorkspace({
                 aria-pressed={scenario === label}
                 className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm transition ${
                   scenario === label
-                    ? "border-white bg-white text-zinc-950"
-                    : "border-white/[0.1] bg-white/[0.035] text-zinc-300 hover:bg-white/[0.08]"
+                    ? "border-white/[0.18] bg-[#EDEDED] text-[#0A0A0A]"
+                    : "border-white/[0.12] bg-[#0A0A0A] text-zinc-300 hover:border-white/[0.22] hover:bg-[#141414]"
                 }`}
               >
                 {label}
@@ -601,7 +601,7 @@ export function ChatWorkspace({
                 }}
                 maxLength={120}
                 placeholder="Ex. présenter mon projet à un client"
-                className="min-h-12 w-full min-w-0 rounded-2xl border border-white/[0.1] bg-black/20 px-4 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-amber-200/40 focus:ring-2 focus:ring-amber-200/10"
+                className="h-10 w-full min-w-0 rounded-lg border border-white/[0.12] bg-[#000000] px-4 text-sm text-[#EDEDED] outline-none transition-colors duration-150 placeholder:text-zinc-500 focus:border-white/[0.3] focus:ring-2 focus:ring-white/[0.08]"
               />
             </label>
             <label className="block">
@@ -613,7 +613,7 @@ export function ChatWorkspace({
                 onChange={(event) =>
                   setSelectedLevel(event.target.value as CEFRLevel)
                 }
-                className="min-h-12 w-full rounded-2xl border border-white/[0.1] bg-[#17171b] px-4 text-sm text-white outline-none focus:border-amber-200/40 focus:ring-2 focus:ring-amber-200/10"
+                className="h-10 w-full rounded-lg border border-white/[0.12] bg-[#0A0A0A] px-4 text-sm text-[#EDEDED] outline-none focus:border-white/[0.3] focus:ring-2 focus:ring-white/[0.08]"
               >
                 {(["A1", "A2", "B1", "B2", "C1", "C2"] as const).map(
                   (level) => (
@@ -636,13 +636,13 @@ export function ChatWorkspace({
             type="button"
             onClick={startConversation}
             disabled={!isHydrated}
-            className="mt-5 inline-flex min-h-12 items-center justify-center rounded-full bg-white px-6 text-sm font-semibold text-zinc-950 transition hover:bg-zinc-200 active:scale-[0.985] disabled:opacity-50"
+            className="mt-5 inline-flex h-10 items-center justify-center rounded-full bg-[#EDEDED] px-6 text-sm font-semibold text-[#0A0A0A] transition-colors duration-150 hover:bg-white active:scale-[0.985] disabled:opacity-50"
           >
             Démarrer l’échange <span aria-hidden="true" className="ml-2">→</span>
           </button>
         </section>
       ) : (
-        <section className="overflow-hidden rounded-3xl border border-white/[0.08] bg-[#111114]">
+        <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0A0A0A]">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] px-4 py-4 sm:px-6">
             <div className="min-w-0">
               <p className="break-words text-sm font-medium text-white">{scenario}</p>
@@ -674,7 +674,7 @@ export function ChatWorkspace({
                   className={`min-w-0 break-words rounded-2xl px-4 py-3.5 text-sm leading-6 ${
                     entry.role === "user"
                       ? "rounded-br-md bg-white text-zinc-950"
-                      : "rounded-bl-md border border-white/[0.08] bg-[#17171b] text-zinc-100"
+                      : "rounded-bl-md border border-white/[0.08] bg-[#111111] text-zinc-100"
                   }`}
                 >
                   {entry.content}
@@ -818,7 +818,7 @@ export function ChatWorkspace({
                       : "border-white/[0.08] text-zinc-400 hover:bg-white/[0.06] hover:text-white"
                   }`}
                 >
-                  {listening ? "Stop" : "Mic"}
+                  {listening ? "Arrêter" : "Micro"}
                 </button>
               ) : null}
               <button
@@ -839,7 +839,7 @@ export function ChatWorkspace({
         </div>
 
         <aside className="order-first min-w-0 lg:order-last">
-          <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#111114]">
+          <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0A0A0A]">
             <button
               type="button"
               onClick={() => setHistoryOpen((open) => !open)}
@@ -923,7 +923,7 @@ export function ChatWorkspace({
                               <span className="truncate text-xs font-medium text-zinc-100">
                                 {savedSession.scenario}
                               </span>
-                              <span className="shrink-0 text-[10px] text-zinc-500">
+                              <span className="shrink-0 font-mono text-[10px] tabular-nums text-zinc-500">
                                 {formatSessionDate(savedSession.updated_at)}
                               </span>
                             </span>
@@ -998,7 +998,7 @@ export function ChatWorkspace({
                 </ul>
               ) : (
                 <p className="px-4 pb-4 text-sm leading-6 text-zinc-400">
-                  Vos conversations terminées apparaîtront ici.
+                  Vos anciens échanges apparaîtront ici. Démarrez une conversation pour les retrouver.
                 </p>
               )}
               {sessionId ? (

@@ -152,7 +152,7 @@ export function MistakeQuizModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="mistake-quiz-title"
-        className="max-h-[min(90dvh,780px)] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/[0.09] bg-[#111114] p-5 shadow-2xl sm:p-7"
+        className="max-h-[min(90dvh,780px)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-7"
       >
         <header className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -203,7 +203,7 @@ export function MistakeQuizModal({
               ✓
             </span>
             <p className="mt-4 text-sm text-zinc-400">Votre résultat</p>
-            <p className="mt-1 font-serif text-5xl tabular-nums text-white">
+            <p className="mt-1 font-mono text-4xl tabular-nums text-white">
               {score.toLocaleString("fr-FR")}<span className="ml-1 text-xl text-zinc-400">/ 10</span>
             </p>
             <p className="mt-2 text-sm text-zinc-400">

@@ -1,38 +1,88 @@
 @import "tailwindcss";
 
 @theme {
-  --color-slate-950: #09090b;
-  --color-slate-900: #111114;
-  --color-slate-800: #1d1d21;
-  --color-slate-700: #29292e;
-  --color-slate-600: #3f3f46;
-  --color-slate-500: #71717a;
-  --color-slate-400: #a1a1aa;
-  --color-slate-300: #d4d4d8;
-  --color-slate-200: #e4e4e7;
-  --color-slate-100: #f4f4f5;
+  --color-coach-black: #000000;
+  --color-coach-surface: #0a0a0a;
+  --color-coach-raised: #111111;
+  --color-coach-hover: #171717;
+  --color-coach-foreground: #ededed;
+  --color-coach-muted: #888888;
+  --color-coach-border: rgb(255 255 255 / 8%);
+
+  --color-white: #ededed;
+  --color-zinc-950: #000000;
+  --color-zinc-900: #0a0a0a;
+  --color-zinc-800: #111111;
+  --color-zinc-700: #171717;
+  --color-zinc-600: #404040;
+  --color-zinc-500: #737373;
+  --color-zinc-400: #888888;
+  --color-zinc-300: #a1a1a1;
+  --color-zinc-200: #d4d4d4;
+  --color-zinc-100: #ededed;
+  --color-zinc-50: #fafafa;
+
+  --color-slate-950: #000000;
+  --color-slate-900: #0a0a0a;
+  --color-slate-800: #111111;
+  --color-slate-700: #171717;
+  --color-slate-600: #404040;
+  --color-slate-500: #737373;
+  --color-slate-400: #888888;
+  --color-slate-300: #a1a1a1;
+  --color-slate-200: #d4d4d4;
+  --color-slate-100: #ededed;
   --color-slate-50: #fafafa;
+
+  --color-violet-100: #a1a1a1;
+  --color-violet-200: #a1a1a1;
+  --color-violet-300: #737373;
+  --color-violet-400: #737373;
+  --color-violet-500: #525252;
+  --color-violet-700: #262626;
+  --color-indigo-100: #a1a1a1;
+  --color-indigo-200: #a1a1a1;
+  --color-indigo-300: #737373;
+  --color-indigo-400: #737373;
+  --color-indigo-500: #525252;
+  --color-indigo-700: #262626;
+  --color-amber-100: #a1a1a1;
+  --color-amber-200: #d4d4d4;
+  --color-amber-300: #a1a1a1;
+  --color-amber-400: #737373;
+  --color-amber-500: #525252;
+  --color-amber-700: #262626;
+
+  --font-serif: var(--font-sans);
 }
 
 :root {
   color-scheme: dark;
+  --coach-canvas: #000000;
+  --coach-surface: #0a0a0a;
+  --coach-raised: #111111;
+  --coach-hover: #171717;
+  --coach-foreground: #ededed;
+  --coach-muted: #888888;
+  --coach-border: rgb(255 255 255 / 8%);
 }
 
 html {
   min-height: 100%;
-  background: #09090b;
+  background: var(--coach-canvas);
   scroll-behavior: smooth;
 }
 
 body {
-  min-height: 100vh;
-  background: #09090b;
+  min-height: 100dvh;
+  background: var(--coach-canvas);
+  color: var(--coach-foreground);
   font-family: var(--font-sans), sans-serif;
 }
 
 ::selection {
-  color: #09090b;
-  background: rgb(251 191 36 / 75%);
+  color: var(--coach-canvas);
+  background: var(--coach-foreground);
 }
 
 button,
@@ -44,35 +94,22 @@ input {
 .page-enter,
 .animate-view-enter,
 .animate-fade-in-up {
-  animation: fadeInUp 650ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: fadeInUp 180ms ease-out both;
 }
 
 .page-enter-delayed {
-  animation: fadeInUp 650ms cubic-bezier(0.2, 0.7, 0.2, 1) 100ms both;
+  animation: fadeInUp 180ms ease-out 40ms both;
 }
 
 @keyframes fadeInUp {
   from {
     opacity: 0;
-    transform: translate3d(0, 14px, 0);
+    transform: translate3d(0, 6px, 0);
   }
 
   to {
     opacity: 1;
     transform: translate3d(0, 0, 0);
-  }
-}
-
-@keyframes pulseGlow {
-  0%,
-  100% {
-    opacity: 0.72;
-    transform: scale(0.98);
-  }
-
-  50% {
-    opacity: 1;
-    transform: scale(1.04);
   }
 }
 
@@ -84,10 +121,6 @@ input {
   to {
     background-position: -180% 0;
   }
-}
-
-.ambient-glow {
-  animation: pulseGlow 11s ease-in-out infinite;
 }
 
 .skeleton-shimmer {
@@ -109,7 +142,7 @@ input {
 .practice-card-inner {
   display: grid;
   transform-style: preserve-3d;
-  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 150ms ease-out;
 }
 
 .review-card-inner {
@@ -133,6 +166,30 @@ input {
 
 .review-card-back {
   transform: rotateY(180deg);
+}
+
+* {
+  scrollbar-color: #404040 #000000;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid #000000;
+  border-radius: 999px;
+  background: #404040;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #737373;
 }
 
 @media (prefers-reduced-motion: reduce) {

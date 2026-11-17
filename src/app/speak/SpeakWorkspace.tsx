@@ -89,17 +89,22 @@ function DictationDiff({ result }: { result: DictationEvaluation }) {
 function EngineStatus({ status }: { status: string }) {
   const labels: Record<string, string> = {
     unloaded: "Modèle non chargé",
-    loading: "Chargement du modèle…",
-    ready: "Prêt · local",
+    loading: "Chargement",
+    ready: "Prêt",
     error: "Indisponible",
   };
-  const tone =
+  const indicator =
     status === "ready"
-      ? "text-emerald-300"
-      : status === "error"
-        ? "text-amber-200"
-        : "text-zinc-400";
-  return <span className={`text-xs ${tone}`}>{labels[status] ?? status}</span>;
+      ? "bg-emerald-400"
+      : status === "loading"
+        ? "bg-[#FBBF24]"
+        : "bg-zinc-500";
+  return (
+    <span className="inline-flex items-center gap-2 text-xs text-zinc-400">
+      <span aria-hidden="true" className={`size-1.5 rounded-full ${indicator}`} />
+      {labels[status] ?? status}
+    </span>
+  );
 }
 
 export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
@@ -147,7 +152,7 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
     ) {
       pendingPlaybackRef.current = null;
       setError(
-        "La voix Studio Kokoro est indisponible. Réessayez son chargement depuis les réglages audio.",
+        "Kokoro Studio (Local) est indisponible. Réessayez son chargement depuis les réglages audio.",
       );
     }
   }, [speechEngine.kokoroStatus, speechEngine.speak]);
@@ -286,8 +291,8 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
     <main className="mx-auto w-full max-w-6xl min-w-0 px-4 pb-10 pt-6 sm:px-6 lg:px-8 lg:pt-10">
       <div className="mb-6 flex min-w-0 flex-col gap-5 md:mb-8 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0">
-          <p className="text-sm text-amber-200">Atelier vocal · {selectedLevel}</p>
-          <h1 className="mt-2 font-serif text-3xl tracking-tight text-white sm:text-4xl">
+          <p className="text-sm text-zinc-400">Niveau ciblé : {selectedLevel}</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#EDEDED] sm:text-3xl">
             Prononciation
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
@@ -302,7 +307,7 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
 
       <section
         aria-label="Moteur de reconnaissance vocale"
-        className="mb-5 grid min-w-0 gap-4 rounded-2xl border border-white/[0.08] bg-[#111114] p-4 sm:p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+        className="mb-5 grid min-w-0 gap-4 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-4 sm:p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
       >
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -313,7 +318,7 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
               <EngineStatus status={recognition.whisperStatus} />
             ) : (
               <span className="text-xs text-zinc-400">
-                Transcription en direct · navigateur
+                Transcription en direct dans le navigateur
               </span>
             )}
           </div>
@@ -326,20 +331,20 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
         <div
           role="group"
           aria-label="Choisir le moteur de reconnaissance"
-          className="grid min-w-0 grid-cols-2 gap-1 rounded-xl border border-white/[0.07] bg-black/20 p-1"
+          className="grid min-w-0 grid-cols-2 gap-1 rounded-xl border border-white/[0.08] bg-[#000000] p-1"
         >
           <button
             type="button"
             aria-pressed={recognition.sttMode === "whisper"}
             onClick={() => selectSttMode("whisper")}
             disabled={recognitionBusy}
-            className={`min-h-11 min-w-0 rounded-lg px-2 text-xs font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200 sm:px-3 ${
+            className={`min-h-11 min-w-0 rounded-lg px-2 text-xs font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:px-3 ${
               recognition.sttMode === "whisper"
-                ? "bg-white/[0.1] text-white"
+                ? "bg-[#171717] text-[#EDEDED]"
                 : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            <span className="block truncate">Whisper Studio · Local</span>
+            <span className="block truncate">Whisper Studio (Local)</span>
             <span className="block truncate text-[10px] text-zinc-500">
               Défaut
             </span>
@@ -352,9 +357,9 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
               !recognition.browserSupported ||
               recognitionBusy
             }
-            className={`min-h-11 min-w-0 rounded-lg px-2 text-xs font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 ${
+            className={`min-h-11 min-w-0 rounded-lg px-2 text-xs font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-40 sm:px-3 ${
               recognition.sttMode === "browser"
-                ? "bg-white/[0.1] text-white"
+                ? "bg-[#171717] text-[#EDEDED]"
                 : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
@@ -368,11 +373,11 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
               type="button"
               onClick={() => void recognition.warmupWhisper()}
               disabled={recognition.whisperStatus === "loading"}
-              className="min-h-10 rounded-full border border-white/[0.1] bg-white/[0.05] px-4 text-xs font-medium text-zinc-100 transition hover:bg-white/[0.1] disabled:cursor-wait disabled:opacity-60"
+              className="min-h-10 rounded-full border border-white/[0.12] bg-[#0A0A0A] px-4 text-xs font-medium text-zinc-100 transition-colors duration-150 hover:border-white/[0.22] hover:bg-[#141414] disabled:cursor-wait disabled:opacity-60"
             >
               {recognition.whisperStatus === "loading"
                 ? "Chargement en cours…"
-                : "Précharger Whisper"}
+                : "Précharger Whisper Studio (Local)"}
             </button>
             <span className="text-xs leading-5 text-zinc-500">
               Le modèle est téléchargé une seule fois puis conservé en cache.
@@ -384,7 +389,7 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
       <div
         role="tablist"
         aria-label="Mode d’entraînement"
-        className="mb-5 flex w-full max-w-md rounded-xl border border-white/[0.08] bg-[#111114] p-1"
+        className="mb-5 flex w-full max-w-md rounded-xl border border-white/[0.08] bg-[#0A0A0A] p-1"
       >
         {(
           [
@@ -401,7 +406,7 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
             disabled={recognitionBusy}
             className={`min-h-11 min-w-0 flex-1 rounded-lg px-3 text-sm transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200 ${
               trainingMode === mode
-                ? "bg-white/[0.1] font-medium text-white"
+                ? "bg-[#171717] font-medium text-[#EDEDED]"
                 : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
@@ -412,7 +417,7 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
 
       {trainingMode === "shadowing" ? (
         <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
-          <section className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#111114] p-4 sm:p-6">
+          <section className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-4 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs text-zinc-500">Répétition évaluée</p>
@@ -489,7 +494,7 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
                   </div>
                   {speechEngine.kokoroStatus === "error" ? (
                     <p className="mt-3 text-xs leading-5 text-amber-200">
-                      Kokoro Studio est indisponible. Réessayez depuis la barre de réglages audio.
+                      Kokoro Studio (Local) est indisponible. Réessayez depuis la barre de réglages audio.
                     </p>
                   ) : null}
                 </>
@@ -565,7 +570,7 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
                     <p className="text-xs text-zinc-400">Précision</p>
-                    <p className="mt-1 text-3xl font-semibold text-white tabular-nums">
+                    <p className="mt-1 font-mono text-3xl font-semibold tabular-nums text-white">
                       {evaluation.accuracyPct.toFixed(1)}
                       <span className="text-lg text-zinc-400"> %</span>
                     </p>
@@ -596,7 +601,7 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
             ) : null}
           </section>
 
-          <aside className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#111114] p-4 sm:p-5">
+          <aside className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-4 sm:p-5">
             <div>
               <p className="text-xs text-zinc-500">Paramètres de l’exercice</p>
               <h2 className="mt-1 font-serif text-xl text-white">
@@ -675,7 +680,7 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
         </div>
       ) : (
         <section className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.62fr)]">
-          <div className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#111114] p-4 sm:p-6">
+          <div className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-4 sm:p-6">
             <p className="text-xs text-zinc-500">Conversation ouverte</p>
             <h2 className="mt-1 font-serif text-2xl text-white">
               Parlez librement en anglais.
@@ -683,7 +688,7 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
               Décrivez une idée, racontez votre journée ou improvisez. Whisper
               transcrit votre voix localement ; vous pourrez ensuite entendre
-              votre phrase avec la voix Studio Kokoro.
+              votre phrase avec la voix Kokoro Studio (Local).
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               {recognition.listening ? (
@@ -719,7 +724,7 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
                   }
                   className="min-h-11 rounded-full border border-amber-200/20 bg-amber-200/[0.07] px-4 text-sm font-medium text-amber-100 transition hover:bg-amber-200/[0.12]"
                 >
-                  Comparer avec la voix Studio Kokoro
+                  Comparer avec la voix Kokoro Studio (Local)
                 </button>
               ) : null}
             </div>
@@ -743,18 +748,18 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
               </button>
             ) : null}
           </div>
-          <aside className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#111114] p-4 sm:p-5">
+          <aside className="min-w-0 rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-4 sm:p-5">
             <p className="text-xs text-zinc-500">Voix de référence</p>
             <h2 className="mt-1 font-serif text-xl text-white">
               Réécoutez votre phrase
             </h2>
             <p className="mt-3 text-sm leading-6 text-zinc-400">
-              La comparaison utilise le moteur Studio Kokoro quand son modèle
+              La comparaison utilise Kokoro Studio (Local) quand son modèle
               local est prêt. Vous pouvez ajuster la vitesse et la voix dans la
               barre audio en haut de page.
             </p>
             <div className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-black/20 p-3">
-              <span className="text-xs text-zinc-300">Kokoro Studio</span>
+              <span className="text-xs text-zinc-300">Kokoro Studio (Local)</span>
               <EngineStatus status={speechEngine.kokoroStatus} />
             </div>
             {speechEngine.kokoroStatus !== "ready" ? (
@@ -766,7 +771,7 @@ export function SpeakWorkspace({ cefrLevel }: { cefrLevel: CEFRLevel }) {
               >
                 {speechEngine.kokoroStatus === "loading"
                   ? "Chargement de la voix…"
-                  : "Charger la voix Studio"}
+                  : "Charger Kokoro Studio (Local)"}
               </button>
             ) : null}
           </aside>

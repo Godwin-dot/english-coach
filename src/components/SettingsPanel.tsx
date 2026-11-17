@@ -23,6 +23,14 @@ const interestSuggestions = [
   "Business & négociation",
   "Sciences",
 ];
+const interestLabels: Record<string, string> = {
+  "Cinéma & séries": "Cinéma et séries",
+  "Business & négociation": "Entreprise et négociation",
+};
+
+export function formatInterestLabel(interest: string) {
+  return interestLabels[interest] ?? interest;
+}
 const settingControls = [
   {
     key: "dailyNewCards",
@@ -194,7 +202,7 @@ export function SettingsPanel({
             role="dialog"
             aria-modal="true"
             aria-labelledby="app-settings-title"
-            className="animate-view-enter max-h-[min(90dvh,860px)] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/[0.09] bg-[#111114] p-5 shadow-2xl sm:p-7"
+            className="animate-view-enter max-h-[min(90dvh,860px)] w-full max-w-4xl overflow-y-auto rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-5 sm:p-7"
           >
             <header className="mb-6 flex items-start justify-between gap-5">
               <div>
@@ -223,7 +231,7 @@ export function SettingsPanel({
               <div className="grid gap-3 md:grid-cols-2">
                 <section className="rounded-2xl border border-white/[0.08] bg-black/20 p-4 sm:p-5 md:row-span-2">
                   <p className="text-sm font-medium text-amber-100">
-                    Niveau & centres d’intérêt
+                    Niveau et centres d’intérêt
                   </p>
                   <p className="mt-1 text-xs leading-5 text-zinc-400">
                     Un parcours adapté à ce que vous aimez apprendre.
@@ -291,10 +299,10 @@ export function SettingsPanel({
                               draft.interests.filter((item) => item !== interest),
                             )
                           }
-                          aria-label={`Retirer ${interest}`}
+                          aria-label={`Retirer ${formatInterestLabel(interest)}`}
                           className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/[0.09] bg-white/[0.04] px-3 text-xs text-zinc-300 transition-all duration-150 hover:border-rose-300/30 hover:text-rose-100 active:scale-[0.985]"
                         >
-                          {interest}
+                          {formatInterestLabel(interest)}
                           <span aria-hidden="true">×</span>
                         </button>
                       </li>
@@ -304,7 +312,9 @@ export function SettingsPanel({
                   <div className="mt-2 flex flex-wrap gap-2">
                     {interestSuggestions.map((interest) => {
                       const selected = draft.interests.some(
-                        (item) => item.toLocaleLowerCase("fr") === interest.toLocaleLowerCase("fr"),
+                        (item) =>
+                          formatInterestLabel(item).toLocaleLowerCase("fr") ===
+                          formatInterestLabel(interest).toLocaleLowerCase("fr"),
                       );
                       return (
                         <button
@@ -314,7 +324,7 @@ export function SettingsPanel({
                           onClick={() => addSuggestedInterest(interest)}
                           className="min-h-10 rounded-full border border-white/[0.08] bg-white/[0.025] px-3 text-xs text-zinc-300 transition-all duration-150 hover:bg-white/[0.07] active:scale-[0.985] disabled:cursor-default disabled:opacity-40"
                         >
-                          {interest}
+                          {formatInterestLabel(interest)}
                         </button>
                       );
                     })}
@@ -323,7 +333,7 @@ export function SettingsPanel({
 
                 <section className="rounded-2xl border border-white/[0.08] bg-black/20 p-4 sm:p-5">
                   <p className="text-sm font-medium text-violet-100">
-                    Rythme & objectifs quotidiens
+                    Rythme et objectifs quotidiens
                   </p>
                   <p className="mt-1 text-xs leading-5 text-zinc-400">
                     Ajustez votre charge de pratique sans perdre le fil.
@@ -349,7 +359,7 @@ export function SettingsPanel({
                               −
                             </button>
                             <span className="w-9 text-center text-sm font-semibold tabular-nums text-white">
-                              {Number.isFinite(draft[key]) ? draft[key] : "—"}
+                              {Number.isFinite(draft[key]) ? draft[key] : "Non défini"}
                             </span>
                             <button
                               type="button"
@@ -395,7 +405,7 @@ export function SettingsPanel({
 
                 <section className="rounded-2xl border border-white/[0.08] bg-black/20 p-4 sm:p-5 md:col-span-2">
                   <p className="text-sm font-medium text-emerald-100">
-                    Souveraineté & sauvegarde
+                    Données et sauvegardes
                   </p>
                   <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p className="max-w-2xl text-xs leading-5 text-zinc-400">

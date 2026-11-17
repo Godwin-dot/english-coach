@@ -266,7 +266,7 @@ export function LLMConfigModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby="llm-config-title"
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-[#111114] p-6 shadow-2xl"
+            className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/[0.08] bg-[#0A0A0A] p-6"
           >
             <header className="mb-6 flex items-start justify-between gap-5">
               <div>
