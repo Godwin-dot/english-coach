@@ -42,6 +42,65 @@ export const ChatTurnLLMResponseSchema = z.object({
   missed_vocab: z.array(MissedVocabItemSchema).max(3),
 });
 
+export const ChatTurnResultSchema = ChatTurnLLMResponseSchema.extend({
+  addedWords: z.array(z.string()),
+});
+
+export const ChatCoachingSchema = z.object({
+  natural_version: z.string(),
+  score: z.number().min(0).max(10),
+  feedback_fr: z.string(),
+  detected_mistakes: z.array(
+    z.object({
+      user_fragment: z.string(),
+      correction: z.string(),
+      category: z.string(),
+      explanation: z.string(),
+    }),
+  ),
+  addedWords: z.array(z.string()),
+});
+
+export const ChatMessageCorrectionSchema = z
+  .object({
+    coaching: ChatCoachingSchema.optional(),
+    translation: z.string().optional(),
+  })
+  .strict();
+
+export const ChatSessionSummarySchema = z.object({
+  id: z.string().uuid(),
+  scenario: z.string(),
+  cefr_level: CEFRLevelSchema,
+  preview: z.string(),
+  message_count: z.number().int().nonnegative(),
+  updated_at: z.string(),
+});
+
+export const ChatSessionListResponseSchema = z.object({
+  sessions: z.array(ChatSessionSummarySchema),
+});
+
+export const ChatSessionDetailsSchema = z.object({
+  session: z.object({
+    id: z.string().uuid(),
+    scenario: z.string(),
+    cefr_level: CEFRLevelSchema,
+    title: z.string(),
+    created_at: z.string(),
+    updated_at: z.string(),
+  }),
+  messages: z.array(
+    z.object({
+      id: z.number().int(),
+      role: z.enum(["user", "assistant"]),
+      content: z.string(),
+      correction_json: z.string().nullable(),
+      created_at: z.string(),
+    }),
+  ),
+});
+
 export const ChatCloseSessionInputSchema = z.object({
   sessionId: z.string().uuid(),
   scenario: z.string().trim().min(2).max(120),
@@ -54,6 +113,10 @@ export const ChatCloseSessionInputSchema = z.object({
 export type ChatMessageItem = z.infer<typeof ChatMessageItemSchema>;
 export type ChatTurnInput = z.infer<typeof ChatTurnInputSchema>;
 export type ChatTurnLLMResponse = z.infer<typeof ChatTurnLLMResponseSchema>;
+export type ChatTurnResult = z.infer<typeof ChatTurnResultSchema>;
+export type ChatCoaching = z.infer<typeof ChatCoachingSchema>;
+export type ChatSessionSummary = z.infer<typeof ChatSessionSummarySchema>;
+export type ChatSessionDetails = z.infer<typeof ChatSessionDetailsSchema>;
 export type ChatCloseSessionInput = z.infer<
   typeof ChatCloseSessionInputSchema
 >;

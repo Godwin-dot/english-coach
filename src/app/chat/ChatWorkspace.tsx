@@ -4,7 +4,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { AudioPlayerBar } from "@/components/AudioPlayerBar";
 import type { CEFRLevel } from "@/schemas/lesson";
-import type { ChatMessageItem } from "@/schemas/chat";
+import {
+  ChatMessageCorrectionSchema,
+  ChatSessionDetailsSchema,
+  ChatSessionListResponseSchema,
+  ChatTurnResultSchema,
+  type ChatCoaching,
+  type ChatMessageItem,
+  type ChatSessionDetails,
+  type ChatSessionSummary,
+  type ChatTurnResult,
+} from "@/schemas/chat";
 import { useSpeechEngine } from "@/hooks/useSpeechEngine";
 import { updateSessionStateField, useSessionState } from "@/hooks/useSessionState";
 
@@ -36,29 +46,11 @@ const scenarios = [
   },
 ] as const;
 
-type Coaching = {
-  natural_version: string;
-  score: number;
-  feedback_fr: string;
-  detected_mistakes: Array<{
-    user_fragment: string;
-    correction: string;
-    category: string;
-    explanation: string;
-  }>;
-  addedWords: string[];
-};
-
-type ChatTurnResult = Coaching & {
-  assistant_reply: string;
-  reply_translation_fr: string;
-};
-
 type ThreadEntry = {
   id: string;
   role: "user" | "assistant";
   content: string;
-  coaching?: Coaching;
+  coaching?: ChatCoaching;
   translation?: string;
 };
 
@@ -102,12 +94,53 @@ function getErrorMessage(body: unknown): string {
   return "La requête n'a pas abouti.";
 }
 
+function formatSessionDate(value: string): string {
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(value));
+}
+
+function restoreThread(
+  messages: ChatSessionDetails["messages"],
+): ThreadEntry[] {
+  return messages.map((message) => {
+    let coaching: ChatCoaching | undefined;
+    let translation: string | undefined;
+    if (message.correction_json) {
+      try {
+        const correction = ChatMessageCorrectionSchema.safeParse(
+          JSON.parse(message.correction_json) as unknown,
+        );
+        if (correction.success) {
+          coaching = correction.data.coaching;
+          translation = correction.data.translation;
+        }
+      } catch {
+        coaching = undefined;
+        translation = undefined;
+      }
+    }
+
+    return {
+      id: `stored-${message.id}`,
+      role: message.role,
+      content: message.content,
+      ...(coaching ? { coaching } : {}),
+      ...(translation ? { translation } : {}),
+    };
+  });
+}
+
 export function ChatWorkspace({
   cefrLevel,
   hasProviderKey,
+  initialSessions,
 }: {
   cefrLevel: CEFRLevel;
   hasProviderKey: boolean;
+  initialSessions: ChatSessionSummary[];
 }) {
   const [session, setSession, isHydrated] = useSessionState<ChatSessionState>(
     "english-coach:chat:v1",
@@ -156,6 +189,15 @@ export function ChatWorkspace({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [historyError, setHistoryError] = useState("");
+  const [sessions, setSessions] = useState(initialSessions);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(
+    null,
+  );
   const [microphoneSupported, setMicrophoneSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const speechEngine = useSpeechEngine();
@@ -178,6 +220,142 @@ export function ChatWorkspace({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [thread, busy]);
+
+  const refreshChatSessions = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      const response = await fetch("/api/chat/sessions", {
+        cache: "no-store",
+      });
+      const body: unknown = await response.json();
+      if (!response.ok) throw new Error(getErrorMessage(body));
+      const parsed = ChatSessionListResponseSchema.safeParse(body);
+      if (!parsed.success) {
+        throw new Error("La liste des conversations est invalide.");
+      }
+      setSessions(parsed.data.sessions);
+    } catch (caught) {
+      setHistoryError(
+        caught instanceof Error
+          ? caught.message
+          : "Impossible d’actualiser les conversations.",
+      );
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  async function closeActiveSession() {
+    if (!sessionId) return;
+    const userMessages = thread.filter(({ role }) => role === "user");
+    if (userMessages.length === 0) return;
+
+    const response = await fetch("/api/chat/close", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId,
+        scenario,
+        exchanges: userMessages.length,
+        score: scores.length
+          ? scores.reduce((sum, score) => sum + score, 0) / scores.length
+          : 0,
+        lastUserMessage: userMessages.at(-1)?.content,
+        duration_s: Math.max(
+          0,
+          Math.floor((Date.now() - sessionStartedAt) / 1000),
+        ),
+      }),
+    });
+    const body: unknown = await response.json();
+    if (!response.ok) throw new Error(getErrorMessage(body));
+  }
+
+  async function openSavedSession(id: string) {
+    if (!isHydrated || busy || loadingSessionId) return;
+    if (id === sessionId) {
+      setHistoryOpen(false);
+      return;
+    }
+
+    setLoadingSessionId(id);
+    setHistoryError("");
+    try {
+      const response = await fetch(`/api/chat/sessions/${encodeURIComponent(id)}`, {
+        cache: "no-store",
+      });
+      const body: unknown = await response.json();
+      if (!response.ok) throw new Error(getErrorMessage(body));
+      const parsed = ChatSessionDetailsSchema.safeParse(body);
+      if (!parsed.success) {
+        throw new Error("Le contenu de cette conversation est invalide.");
+      }
+
+      await closeActiveSession();
+      const restoredThread = restoreThread(parsed.data.messages);
+      setSession((current) => ({
+        ...current,
+        selectedLevel: parsed.data.session.cefr_level,
+        scenario: parsed.data.session.scenario,
+        sessionId: parsed.data.session.id,
+        thread: restoredThread,
+        draft: "",
+        scores: restoredThread.flatMap((entry) =>
+          entry.role === "user" && entry.coaching
+            ? [entry.coaching.score]
+            : [],
+        ),
+        sessionStartedAt: Date.now(),
+      }));
+      setHistoryOpen(false);
+      setError("");
+    } catch (caught) {
+      setHistoryError(
+        caught instanceof Error
+          ? caught.message
+          : "Impossible d’ouvrir cette conversation.",
+      );
+    } finally {
+      setLoadingSessionId(null);
+    }
+  }
+
+  async function removeSavedSession(id: string) {
+    if (busy || deletingSessionId) return;
+    setDeletingSessionId(id);
+    setHistoryError("");
+    try {
+      const response = await fetch(
+        `/api/chat/sessions/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
+      );
+      const body: unknown = await response.json();
+      if (!response.ok) throw new Error(getErrorMessage(body));
+
+      setSessions((current) => current.filter((saved) => saved.id !== id));
+      setConfirmDeleteId(null);
+      if (sessionId === id) {
+        recognitionRef.current?.stop();
+        setSession((current) => ({
+          ...current,
+          sessionId: null,
+          thread: [],
+          draft: "",
+          scores: [],
+          sessionStartedAt: 0,
+        }));
+      }
+    } catch (caught) {
+      setHistoryError(
+        caught instanceof Error
+          ? caught.message
+          : "Impossible de supprimer cette conversation.",
+      );
+    } finally {
+      setDeletingSessionId(null);
+    }
+  }
 
   function startConversation() {
     if (!isHydrated) return;
@@ -247,7 +425,11 @@ export function ChatWorkspace({
         throw new Error(getErrorMessage(body));
       }
 
-      const result = body as ChatTurnResult;
+      const parsedResult = ChatTurnResultSchema.safeParse(body);
+      if (!parsedResult.success) {
+        throw new Error("La réponse de conversation est invalide.");
+      }
+      const result: ChatTurnResult = parsedResult.data;
       setThread((current) => [
         ...current,
         {
@@ -271,6 +453,7 @@ export function ChatWorkspace({
       ]);
       setScores((current) => [...current, result.score]);
       setDraft("");
+      void refreshChatSessions();
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -283,41 +466,18 @@ export function ChatWorkspace({
   }
 
   async function resetConversation() {
-    if (!sessionId || busy) {
+    if (!sessionId || busy || loadingSessionId) {
       return;
     }
-    const userMessages = thread.filter(({ role }) => role === "user");
-    if (userMessages.length > 0) {
-      const averageScore =
-        scores.reduce((sum, score) => sum + score, 0) / scores.length;
-      try {
-        const response = await fetch("/api/chat/close", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId,
-            scenario,
-            exchanges: userMessages.length,
-            score: averageScore,
-            lastUserMessage: userMessages.at(-1)?.content,
-            duration_s: Math.max(
-              0,
-              Math.floor((Date.now() - sessionStartedAt) / 1000),
-            ),
-          }),
-        });
-        const body: unknown = await response.json();
-        if (!response.ok) {
-          throw new Error(getErrorMessage(body));
-        }
-      } catch (caught) {
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : "Impossible d'enregistrer la clôture de la session.",
-        );
-        return;
-      }
+    try {
+      await closeActiveSession();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Impossible d'enregistrer la clôture de la session.",
+      );
+      return;
     }
     recognitionRef.current?.stop();
     setSessionId(null);
@@ -326,6 +486,7 @@ export function ChatWorkspace({
     setDraft("");
     updateSessionStateField(setSession, "sessionStartedAt", 0);
     setError("");
+    await refreshChatSessions();
   }
 
   function startDictation() {
@@ -373,7 +534,7 @@ export function ChatWorkspace({
   const exchangeCount = thread.filter(({ role }) => role === "user").length;
 
   return (
-    <main className="animate-view-enter mx-auto w-full max-w-5xl min-w-0 px-4 pb-10 pt-6 sm:px-7 sm:pt-9">
+    <main className="animate-view-enter mx-auto w-full max-w-7xl min-w-0 px-4 pb-10 pt-6 sm:px-7 sm:pt-9">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm text-zinc-400">Expression spontanée</p>
@@ -392,7 +553,9 @@ export function ChatWorkspace({
 
       <AudioPlayerBar compact engine={speechEngine} className="mb-5" />
 
-      {!sessionId ? (
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="order-last min-w-0 lg:order-first">
+          {!sessionId ? (
         <section className="rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7">
           <div className="max-w-2xl">
             <p className="text-xs font-medium text-amber-200">Choisissez votre scène</p>
@@ -494,7 +657,7 @@ export function ChatWorkspace({
               disabled={busy}
               className="inline-flex min-h-11 shrink-0 items-center rounded-full border border-white/[0.1] bg-white/[0.035] px-4 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Nouvel échange
+              Nouvelle conversation
             </button>
           </header>
 
@@ -672,7 +835,191 @@ export function ChatWorkspace({
             </p>
           </div>
         </section>
-      )}
+          )}
+        </div>
+
+        <aside className="order-first min-w-0 lg:order-last">
+          <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#111114]">
+            <button
+              type="button"
+              onClick={() => setHistoryOpen((open) => !open)}
+              aria-expanded={historyOpen}
+              className="flex min-h-12 w-full items-center justify-between gap-3 px-4 text-left lg:hidden"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-sm font-medium text-white">
+                  Conversations récentes
+                </span>
+                <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-xs tabular-nums text-zinc-300">
+                  {sessions.length}
+                </span>
+              </span>
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                fill="none"
+                className={`size-4 shrink-0 text-zinc-400 transition-transform duration-150 ${
+                  historyOpen ? "rotate-180" : ""
+                }`}
+              >
+                <path
+                  d="m5 7.5 5 5 5-5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+
+            <div className="hidden px-4 pb-3 pt-4 lg:block">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-white">
+                  Conversations récentes
+                </h2>
+                <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-xs tabular-nums text-zinc-300">
+                  {sessions.length}
+                </span>
+              </div>
+            </div>
+
+            <div className={`${historyOpen ? "block" : "hidden"} lg:block`}>
+              {historyLoading ? (
+                <div
+                  role="status"
+                  aria-label="Chargement des conversations"
+                  className="space-y-3 px-4 pb-4"
+                >
+                  <div className="skeleton-shimmer h-14 rounded-xl" />
+                  <div className="skeleton-shimmer h-14 rounded-xl" />
+                  <span className="sr-only">Chargement des conversations…</span>
+                </div>
+              ) : sessions.length > 0 ? (
+                <ul className="max-h-[70vh] divide-y divide-white/[0.06] overflow-y-auto px-3 pb-2 lg:max-h-[calc(100vh-12rem)]">
+                  {sessions.map((savedSession) => {
+                    const isActive = savedSession.id === sessionId;
+                    const isLoading = loadingSessionId === savedSession.id;
+                    const isDeleting = deletingSessionId === savedSession.id;
+                    return (
+                      <li key={savedSession.id} className="py-2">
+                        <div
+                          className={`flex min-w-0 items-start gap-1 rounded-xl p-1 transition-colors ${
+                            isActive ? "bg-amber-200/[0.06]" : "hover:bg-white/[0.035]"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => void openSavedSession(savedSession.id)}
+                            disabled={
+                              !isHydrated ||
+                              busy ||
+                              loadingSessionId !== null ||
+                              deletingSessionId !== null
+                            }
+                            aria-pressed={isActive}
+                            className="min-h-11 min-w-0 flex-1 rounded-lg px-2.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70 disabled:cursor-wait disabled:opacity-60"
+                          >
+                            <span className="flex min-w-0 items-center justify-between gap-2">
+                              <span className="truncate text-xs font-medium text-zinc-100">
+                                {savedSession.scenario}
+                              </span>
+                              <span className="shrink-0 text-[10px] text-zinc-500">
+                                {formatSessionDate(savedSession.updated_at)}
+                              </span>
+                            </span>
+                            <span className="mt-1 block line-clamp-2 break-words text-xs leading-5 text-zinc-400">
+                              {savedSession.preview}
+                            </span>
+                            <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-zinc-500">
+                              <span>{savedSession.cefr_level}</span>
+                              <span aria-hidden="true">·</span>
+                              <span className="tabular-nums">
+                                {savedSession.message_count} messages
+                              </span>
+                              {isActive ? (
+                                <span className="text-amber-200">En cours</span>
+                              ) : null}
+                              {isLoading ? (
+                                <span className="text-amber-100">Ouverture…</span>
+                              ) : null}
+                            </span>
+                          </button>
+
+                          {confirmDeleteId === savedSession.id ? (
+                            <div className="flex shrink-0 flex-col gap-1">
+                              <button
+                                type="button"
+                                onClick={() => void removeSavedSession(savedSession.id)}
+                                disabled={isDeleting || loadingSessionId !== null}
+                                className="min-h-9 rounded-lg px-2 text-[10px] font-medium text-rose-200 transition hover:bg-rose-300/[0.1] disabled:opacity-50"
+                              >
+                                {isDeleting ? "Suppression…" : "Supprimer"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteId(null)}
+                                disabled={isDeleting}
+                                className="min-h-8 rounded-lg px-2 text-[10px] text-zinc-400 transition hover:bg-white/[0.06] hover:text-white"
+                              >
+                                Annuler
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(savedSession.id)}
+                              disabled={
+                                busy ||
+                                deletingSessionId !== null ||
+                                loadingSessionId !== null
+                              }
+                              aria-label={`Supprimer la conversation : ${savedSession.scenario}`}
+                              title="Supprimer la conversation"
+                              className="grid size-10 shrink-0 place-items-center rounded-lg text-zinc-500 transition hover:bg-rose-300/[0.08] hover:text-rose-200 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-amber-200 disabled:opacity-40"
+                            >
+                              <svg
+                                aria-hidden="true"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                className="size-4"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="px-4 pb-4 text-sm leading-6 text-zinc-400">
+                  Vos conversations terminées apparaîtront ici.
+                </p>
+              )}
+              {sessionId ? (
+                <div className="border-t border-white/[0.06] px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHistoryOpen(false);
+                      void resetConversation();
+                    }}
+                    disabled={busy || loadingSessionId !== null}
+                    className="min-h-11 w-full rounded-full border border-white/[0.1] bg-white/[0.04] px-4 text-xs font-medium text-zinc-200 transition hover:bg-white/[0.08] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Nouvelle conversation
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </aside>
+      </div>
 
       {error ? (
         <p
@@ -680,6 +1027,14 @@ export function ChatWorkspace({
           className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-300/[0.06] px-4 py-3 text-sm leading-6 text-rose-100"
         >
           {error}
+        </p>
+      ) : null}
+      {historyError ? (
+        <p
+          role="alert"
+          className="mt-3 rounded-2xl border border-rose-300/20 bg-rose-300/[0.06] px-4 py-3 text-sm leading-6 text-rose-100"
+        >
+          {historyError}
         </p>
       ) : null}
     </main>

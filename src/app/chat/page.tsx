@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/AppShell";
 import { getReviewableCardCount } from "@/domain/cards";
+import { listChatSessions } from "@/domain/chat";
 import { getPublicLLMConfig } from "@/domain/llm-config";
 import { getAppSettings } from "@/domain/settings";
 import { isPasswordAuthEnabled } from "@/lib/auth";
@@ -24,6 +25,7 @@ export default function ChatPage() {
       <ChatWorkspace
         cefrLevel={appSettings.targetLevel}
         hasProviderKey={hasProviderKey}
+        initialSessions={listChatSessions()}
       />
     </AppShell>
   );

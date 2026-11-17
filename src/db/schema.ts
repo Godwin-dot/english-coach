@@ -8,6 +8,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
+import type { CEFRLevel } from "@/schemas/lesson";
 
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
@@ -83,4 +84,38 @@ export const mistakes = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (table) => [index("idx_mistakes_date").on(table.createdAt)],
+);
+
+export const chatSessions = sqliteTable(
+  "chat_sessions",
+  {
+    id: text("id").primaryKey(),
+    scenario: text("scenario").notNull(),
+    cefrLevel: text("cefr_level").$type<CEFRLevel>().notNull(),
+    title: text("title").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("idx_chat_sessions_updated_at").on(table.updatedAt)],
+);
+
+export const chatMessages = sqliteTable(
+  "chat_messages",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => chatSessions.id, { onDelete: "cascade" }),
+    role: text("role").$type<"user" | "assistant">().notNull(),
+    content: text("content").notNull(),
+    correctionJson: text("correction_json"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("idx_chat_messages_session_created").on(
+      table.sessionId,
+      table.createdAt,
+      table.id,
+    ),
+  ],
 );

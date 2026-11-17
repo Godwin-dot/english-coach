@@ -1,10 +1,16 @@
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { ZodError } from "zod";
 import { db } from "@/db";
-import { activityLog, cards, mistakes } from "@/db/schema";
+import {
+  activityLog,
+  cards,
+  chatMessages,
+  chatSessions,
+  mistakes,
+} from "@/db/schema";
 import { addMissedVocabCards } from "@/domain/cards";
 import { LLMProviderError } from "@/llm/errors";
-import { getLLMProvider } from "@/llm/provider";
+import { getLLMProvider, type LLMProvider } from "@/llm/provider";
 import {
   ChatTurnLLMResponseSchema,
   type ChatCloseSessionInput,
@@ -43,7 +49,10 @@ function chatSessionAlreadyLogged(
   );
 }
 
-export async function processChatTurn(input: ChatTurnInput) {
+export async function processChatTurn(
+  input: ChatTurnInput,
+  providerOverride?: LLMProvider,
+) {
   const lastUserMessage = input.messages.at(-1);
   if (!lastUserMessage || lastUserMessage.role !== "user") {
     throw new Error("Le dernier message doit provenir de l’utilisateur.");
@@ -55,7 +64,7 @@ export async function processChatTurn(input: ChatTurnInput) {
     messages: input.messages,
     targetWords: getRecentTargetWords(),
   });
-  const provider = getLLMProvider();
+  const provider = providerOverride ?? getLLMProvider();
   let result: ChatTurnLLMResponse;
   try {
     result = await provider.generateStructuredJSON(
@@ -90,8 +99,88 @@ export async function processChatTurn(input: ChatTurnInput) {
   const userExchangeCount = input.messages.filter(
     ({ role }) => role === "user",
   ).length;
+  const coaching = {
+    natural_version: result.natural_version,
+    score: result.score,
+    feedback_fr: result.feedback_fr,
+    detected_mistakes: result.detected_mistakes,
+    addedWords:
+      result.score < 7 || result.detected_mistakes.length > 0
+        ? addMissedVocabCards(result.missed_vocab)
+        : [],
+  };
 
   db.transaction((transaction) => {
+    if (input.sessionId) {
+      const existingSession = transaction
+        .select({ id: chatSessions.id })
+        .from(chatSessions)
+        .where(eq(chatSessions.id, input.sessionId))
+        .get();
+
+      if (!existingSession) {
+        const firstUserMessage = input.messages.find(
+          ({ role }) => role === "user",
+        );
+        transaction
+          .insert(chatSessions)
+          .values({
+            id: input.sessionId,
+            scenario: input.scenario,
+            cefrLevel: input.cefrLevel,
+            title: (firstUserMessage?.content ?? input.scenario).slice(0, 120),
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run();
+
+        for (const message of input.messages.slice(0, -1)) {
+          transaction
+            .insert(chatMessages)
+            .values({
+              sessionId: input.sessionId,
+              role: message.role,
+              content: message.content,
+              correctionJson: null,
+              createdAt: now,
+            })
+            .run();
+        }
+      }
+
+      transaction
+        .insert(chatMessages)
+        .values({
+          sessionId: input.sessionId,
+          role: "user",
+          content: lastUserMessage.content,
+          correctionJson: JSON.stringify({ coaching }),
+          createdAt: now,
+        })
+        .run();
+      transaction
+        .insert(chatMessages)
+        .values({
+          sessionId: input.sessionId,
+          role: "assistant",
+          content: result.assistant_reply,
+          correctionJson: JSON.stringify({
+            translation: result.reply_translation_fr,
+          }),
+          createdAt: now,
+        })
+        .run();
+      transaction
+        .update(chatSessions)
+        .set({
+          scenario: input.scenario,
+          cefrLevel: input.cefrLevel,
+          updatedAt: now,
+        })
+        .where(eq(chatSessions.id, input.sessionId))
+        .run();
+    }
+
     if (result.detected_mistakes.length > 0) {
       transaction
         .insert(mistakes)
@@ -147,12 +236,7 @@ export async function processChatTurn(input: ChatTurnInput) {
     }
   });
 
-  const addedWords =
-    result.score < 7 || result.detected_mistakes.length > 0
-      ? addMissedVocabCards(result.missed_vocab)
-      : [];
-
-  return { ...result, addedWords };
+  return { ...result, addedWords: coaching.addedWords };
 }
 
 export function closeChatSession(input: ChatCloseSessionInput): void {
@@ -177,4 +261,61 @@ export function closeChatSession(input: ChatCloseSessionInput): void {
       })
       .run();
   });
+}
+
+export function listChatSessions(limit = 30) {
+  const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
+  return db
+    .select({
+      id: chatSessions.id,
+      scenario: chatSessions.scenario,
+      cefr_level: chatSessions.cefrLevel,
+      preview: chatSessions.title,
+      message_count: sql<number>`count(${chatMessages.id})`.as("message_count"),
+      updated_at: chatSessions.updatedAt,
+    })
+    .from(chatSessions)
+    .leftJoin(chatMessages, eq(chatMessages.sessionId, chatSessions.id))
+    .groupBy(chatSessions.id)
+    .orderBy(desc(chatSessions.updatedAt))
+    .limit(safeLimit)
+    .all();
+}
+
+export function getChatSessionById(sessionId: string) {
+  const session = db
+    .select({
+      id: chatSessions.id,
+      scenario: chatSessions.scenario,
+      cefr_level: chatSessions.cefrLevel,
+      title: chatSessions.title,
+      created_at: chatSessions.createdAt,
+      updated_at: chatSessions.updatedAt,
+    })
+    .from(chatSessions)
+    .where(eq(chatSessions.id, sessionId))
+    .get();
+  if (!session) return null;
+
+  const messages = db
+    .select({
+      id: chatMessages.id,
+      role: chatMessages.role,
+      content: chatMessages.content,
+      correction_json: chatMessages.correctionJson,
+      created_at: chatMessages.createdAt,
+    })
+    .from(chatMessages)
+    .where(eq(chatMessages.sessionId, sessionId))
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
+    .all();
+  return { session, messages };
+}
+
+export function deleteChatSession(sessionId: string): boolean {
+  const result = db
+    .delete(chatSessions)
+    .where(eq(chatSessions.id, sessionId))
+    .run();
+  return result.changes > 0;
 }
