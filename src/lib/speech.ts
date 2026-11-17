@@ -14,6 +14,8 @@ export const KOKORO_VOICES = [
   accent: EnglishAccent;
 }>;
 
+export type KokoroVoiceId = (typeof KOKORO_VOICES)[number]["id"];
+
 export type SpeechToken = {
   text: string;
   isWord: boolean;

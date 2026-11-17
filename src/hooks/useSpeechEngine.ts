@@ -23,7 +23,6 @@ export type SpeechEngine = {
   availableVoices: SpeechSynthesisVoice[];
   engineMode: SpeechEngineMode;
   kokoroStatus: KokoroStatus;
-  kokoroProgress: number;
   initKokoroModel: () => void;
   setEngineMode: (mode: SpeechEngineMode) => void;
   speak: (text: string, sourceId?: string, charOffset?: number) => void;
@@ -41,12 +40,6 @@ type Playback = {
   offset: number;
 };
 
-type WorkerResponse =
-  | { type: "progress"; progress: number }
-  | { type: "ready" }
-  | { type: "audio"; requestId: string; blob: Blob }
-  | { type: "error"; requestId?: string; message: string };
-
 const rateKey = "ec_speech_rate";
 const accentKey = "ec_speech_accent";
 const voiceKey = "ec_speech_voice_uri";
@@ -62,6 +55,21 @@ function isEnglishAccent(value: string | null): value is EnglishAccent {
 
 function isEngineMode(value: string | null): value is SpeechEngineMode {
   return value === "kokoro" || value === "browser";
+}
+
+function parseKokoroStatus(value: unknown): KokoroStatus | null {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "status" in value &&
+    (value.status === "unloaded" ||
+      value.status === "loading" ||
+      value.status === "ready" ||
+      value.status === "error")
+  ) {
+    return value.status;
+  }
+  return null;
 }
 
 function defaultKokoroVoice(accent: EnglishAccent): string {
@@ -97,7 +105,6 @@ export function useSpeechEngine(): SpeechEngine {
   >([]);
   const [engineMode, setEngineModeState] = useState<SpeechEngineMode>("browser");
   const [kokoroStatus, setKokoroStatus] = useState<KokoroStatus>("unloaded");
-  const [kokoroProgress, setKokoroProgress] = useState(0);
   const playbackRef = useRef<Playback | null>(null);
   const generationRef = useRef(0);
   const statusRef = useRef<SpeechStatus>("idle");
@@ -118,17 +125,9 @@ export function useSpeechEngine(): SpeechEngine {
   );
   const playbackStartedAtRef = useRef(0);
   const boundaryReceivedRef = useRef(false);
-  const workerRef = useRef<Worker | null>(null);
-  const requestIdRef = useRef(0);
-  const pendingRequestsRef = useRef(
-    new Map<
-      string,
-      {
-        resolve: (blob: Blob) => void;
-        reject: (error: Error) => void;
-        timeout: ReturnType<typeof setTimeout>;
-      }
-    >(),
+  const kokoroWarmupControllerRef = useRef<AbortController | null>(null);
+  const kokoroPollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
   );
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const audioCacheRef = useRef(new Map<string, string>());
@@ -177,21 +176,6 @@ export function useSpeechEngine(): SpeechEngine {
     setActiveSourceId(null);
     setActiveCharIndex(null);
   }, [cleanupAudio, clearFallback, updateStatus]);
-
-  const failWorker = useCallback(
-    (message: string) => {
-      updateKokoroStatus("error");
-      const worker = workerRef.current;
-      workerRef.current = null;
-      worker?.terminate();
-      for (const [requestId, pending] of pendingRequestsRef.current) {
-        clearTimeout(pending.timeout);
-        pending.reject(new Error(message));
-        pendingRequestsRef.current.delete(requestId);
-      }
-    },
-    [updateKokoroStatus],
-  );
 
   const startBrowserPlayback = useCallback(
     (playback: Playback, startAt: number, generation: number) => {
@@ -292,29 +276,31 @@ export function useSpeechEngine(): SpeechEngine {
   );
 
   const generateKokoroAudio = useCallback(
-    (text: string, voice: string, speed: SpeechRate): Promise<Blob> => {
-      const worker = workerRef.current;
-      if (!worker) return Promise.reject(new Error("Kokoro worker is unavailable."));
-      const requestId = String(++requestIdRef.current);
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          const pending = pendingRequestsRef.current.get(requestId);
-          if (!pending) return;
-          pendingRequestsRef.current.delete(requestId);
-          pending.reject(new Error("Kokoro audio generation timed out."));
-          failWorker("Kokoro audio generation timed out.");
-        }, 15_000);
-        pendingRequestsRef.current.set(requestId, { resolve, reject, timeout });
-        try {
-          worker.postMessage({ type: "generate", requestId, text, voice, speed });
-        } catch (error) {
-          failWorker(
-            error instanceof Error ? error.message : "Kokoro worker failed.",
-          );
-        }
+    async (text: string, voice: string, speed: SpeechRate): Promise<Blob> => {
+      const response = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, voice, speed }),
       });
+      if (!response.ok) {
+        const payload: unknown = await response.json().catch(() => null);
+        const message =
+          typeof payload === "object" &&
+          payload !== null &&
+          "error" in payload &&
+          typeof payload.error === "string"
+            ? payload.error
+            : "Kokoro audio synthesis failed.";
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      if (blob.size === 0 || !blob.type.startsWith("audio/wav")) {
+        throw new Error("The Kokoro API returned an invalid WAV file.");
+      }
+      return blob;
     },
-    [failWorker],
+    [],
   );
 
   const startKokoroPlayback = useCallback(
@@ -478,44 +464,64 @@ export function useSpeechEngine(): SpeechEngine {
     if (kokoroStatusRef.current === "ready" || kokoroStatusRef.current === "loading") {
       return;
     }
-    updateKokoroStatus("loading");
-    setKokoroProgress(0);
-
-    try {
-      const worker = new Worker(
-        new URL("../workers/kokoro-tts.worker.ts", import.meta.url),
-        { type: "module" },
-      );
-      workerRef.current = worker;
-      worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-        const message = event.data;
-        if (message.type === "progress") {
-          setKokoroProgress(Math.min(99, Math.max(0, message.progress)));
-        } else if (message.type === "ready") {
-          setKokoroProgress(100);
-          updateKokoroStatus("ready");
-        } else if (message.type === "audio") {
-          const pending = pendingRequestsRef.current.get(message.requestId);
-          if (pending) {
-            clearTimeout(pending.timeout);
-            pending.resolve(message.blob);
-          }
-          pendingRequestsRef.current.delete(message.requestId);
-        } else {
-          failWorker(message.message);
-        }
-      };
-      worker.onerror = (event) => {
-        event.preventDefault();
-        failWorker(event.message || "Kokoro worker failed.");
-      };
-      worker.postMessage({ type: "load" });
-    } catch (error) {
-      failWorker(
-        error instanceof Error ? error.message : "Kokoro worker failed to start.",
-      );
+    kokoroWarmupControllerRef.current?.abort();
+    if (kokoroPollTimeoutRef.current) {
+      clearTimeout(kokoroPollTimeoutRef.current);
+      kokoroPollTimeoutRef.current = null;
     }
-  }, [failWorker, updateKokoroStatus]);
+    const controller = new AbortController();
+    kokoroWarmupControllerRef.current = controller;
+    updateKokoroStatus("loading");
+
+    const handleError = (error: unknown) => {
+      if (controller.signal.aborted) return;
+      console.error("Kokoro model warmup failed.", error);
+      updateKokoroStatus("error");
+    };
+
+    const pollStatus = async (): Promise<void> => {
+      const response = await fetch("/api/tts", {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error("Unable to read Kokoro model status.");
+      }
+      const status = parseKokoroStatus(await response.json());
+      if (status === "ready") {
+        updateKokoroStatus("ready");
+        return;
+      }
+      if (status === "error") {
+        throw new Error("The Kokoro model failed to initialize.");
+      }
+      kokoroPollTimeoutRef.current = setTimeout(() => {
+        void pollStatus().catch(handleError);
+      }, 750);
+    };
+
+    void fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "warmup" }),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Unable to initialize the Kokoro model.");
+        }
+        const status = parseKokoroStatus(await response.json());
+        if (status === "ready") {
+          updateKokoroStatus("ready");
+          return;
+        }
+        if (status === "error") {
+          throw new Error("The Kokoro model failed to initialize.");
+        }
+        await pollStatus();
+      })
+      .catch(handleError);
+  }, [updateKokoroStatus]);
 
   const setEngineMode = useCallback(
     (nextMode: SpeechEngineMode) => {
@@ -687,19 +693,18 @@ export function useSpeechEngine(): SpeechEngine {
     () => () => {
       clearFallback();
       cleanupAudio();
-      workerRef.current?.terminate();
-      workerRef.current = null;
+      kokoroWarmupControllerRef.current?.abort();
+      kokoroWarmupControllerRef.current = null;
+      if (kokoroPollTimeoutRef.current) {
+        clearTimeout(kokoroPollTimeoutRef.current);
+        kokoroPollTimeoutRef.current = null;
+      }
       kokoroStatusRef.current = "unloaded";
       for (const objectUrl of audioCacheRef.current.values()) {
         URL.revokeObjectURL(objectUrl);
       }
       audioCacheRef.current.clear();
       audioGenerationCacheRef.current.clear();
-      for (const pending of pendingRequestsRef.current.values()) {
-        clearTimeout(pending.timeout);
-        pending.reject(new Error("Speech engine unmounted."));
-      }
-      pendingRequestsRef.current.clear();
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
@@ -722,7 +727,6 @@ export function useSpeechEngine(): SpeechEngine {
     availableVoices,
     engineMode,
     kokoroStatus,
-    kokoroProgress,
     initKokoroModel,
     setEngineMode,
     speak,

@@ -126,24 +126,7 @@ export function AudioPlayerBar({
           engine.kokoroStatus !== "ready" ? (
             <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-xs text-zinc-300">
               {engine.kokoroStatus === "loading" ? (
-                <>
-                  <div
-                    className="h-1.5 min-w-16 flex-1 overflow-hidden rounded-full bg-white/[0.08]"
-                    role="progressbar"
-                    aria-label="Chargement du modèle Kokoro"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={engine.kokoroProgress}
-                  >
-                    <div
-                      className="h-full rounded-full bg-amber-300 transition-[width] duration-150"
-                      style={{ width: `${engine.kokoroProgress}%` }}
-                    />
-                  </div>
-                  <span className="shrink-0 tabular-nums">
-                    Chargement {engine.kokoroProgress}%…
-                  </span>
-                </>
+                <span>Initialisation de la voix Studio sur le serveur…</span>
               ) : engine.kokoroStatus === "error" ? (
                 <>
                   <span>La voix Studio est indisponible ; la voix navigateur reste active.</span>
