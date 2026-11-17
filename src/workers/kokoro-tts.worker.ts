@@ -1,3 +1,4 @@
+import { env } from "@huggingface/transformers";
 import { KokoroTTS } from "kokoro-js";
 
 type WorkerRequest =
@@ -30,6 +31,11 @@ function post(message: WorkerResponse): void {
 function loadModel(): Promise<KokoroTTS> {
   if (!modelPromise) {
     progress = 0;
+    const wasm = env.backends?.onnx?.wasm;
+    if (wasm) {
+      wasm.numThreads = 1;
+      wasm.proxy = false;
+    }
     modelPromise = KokoroTTS.from_pretrained(
       "onnx-community/Kokoro-82M-v1.0-ONNX",
       {

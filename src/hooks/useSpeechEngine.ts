@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getRankedEnglishVoices,
   KOKORO_VOICES,
+  splitSentencesWithOffsets,
   type EnglishAccent,
   type SpeechEngineMode,
 } from "@/lib/speech";
@@ -131,6 +132,7 @@ export function useSpeechEngine(): SpeechEngine {
   );
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const audioCacheRef = useRef(new Map<string, string>());
+  const audioGenerationCacheRef = useRef(new Map<string, Promise<string>>());
 
   const updateStatus = useCallback((next: SpeechStatus) => {
     statusRef.current = next;
@@ -301,7 +303,7 @@ export function useSpeechEngine(): SpeechEngine {
           pendingRequestsRef.current.delete(requestId);
           pending.reject(new Error("Kokoro audio generation timed out."));
           failWorker("Kokoro audio generation timed out.");
-        }, 45_000);
+        }, 15_000);
         pendingRequestsRef.current.set(requestId, { resolve, reject, timeout });
         try {
           worker.postMessage({ type: "generate", requestId, text, voice, speed });
@@ -323,68 +325,107 @@ export function useSpeechEngine(): SpeechEngine {
       )
         ? settings.selectedVoiceURI
         : defaultKokoroVoice(settings.accent);
-      const text = playback.text.slice(startAt);
-      const cacheKey = `${voice}|${settings.rate}|${text}`;
-      let objectUrl = audioCacheRef.current.get(cacheKey);
+      const sentences = splitSentencesWithOffsets(playback.text.slice(startAt));
+      if (sentences.length === 0) {
+        startBrowserPlayback(playback, startAt, generation);
+        return;
+      }
 
-      try {
-        if (!objectUrl) {
-          const blob = await generateKokoroAudio(text, voice, settings.rate);
-          if (generationRef.current !== generation) return;
-          objectUrl = URL.createObjectURL(blob);
-          audioCacheRef.current.set(cacheKey, objectUrl);
-          if (audioCacheRef.current.size > 100) {
-            const oldestKey = audioCacheRef.current.keys().next().value;
-            if (oldestKey) {
-              const oldestUrl = audioCacheRef.current.get(oldestKey);
-              if (oldestUrl) URL.revokeObjectURL(oldestUrl);
-              audioCacheRef.current.delete(oldestKey);
+      const getAudioUrl = (text: string): Promise<string> => {
+        const cacheKey = `${voice}|${settings.rate}|${text}`;
+        const cachedUrl = audioCacheRef.current.get(cacheKey);
+        if (cachedUrl) return Promise.resolve(cachedUrl);
+        const pending = audioGenerationCacheRef.current.get(cacheKey);
+        if (pending) return pending;
+
+        const generationPromise = generateKokoroAudio(
+          text,
+          voice,
+          settings.rate,
+        )
+          .then((blob) => {
+            if (blob.size === 0) {
+              throw new Error("Kokoro returned an empty audio file.");
             }
+            const objectUrl = URL.createObjectURL(blob);
+            audioCacheRef.current.set(cacheKey, objectUrl);
+            if (audioCacheRef.current.size > 100) {
+              const oldestKey = audioCacheRef.current.keys().next().value;
+              if (oldestKey) {
+                const oldestUrl = audioCacheRef.current.get(oldestKey);
+                if (oldestUrl) URL.revokeObjectURL(oldestUrl);
+                audioCacheRef.current.delete(oldestKey);
+              }
+            }
+            return objectUrl;
+          })
+          .finally(() => {
+            audioGenerationCacheRef.current.delete(cacheKey);
+          });
+        audioGenerationCacheRef.current.set(cacheKey, generationPromise);
+        return generationPromise;
+      };
+
+      const playSentence = async (sentenceIndex: number): Promise<void> => {
+        const sentence = sentences[sentenceIndex];
+        if (!sentence || generationRef.current !== generation) return;
+        const sentenceStartAt = startAt + sentence.startChar;
+        try {
+          const objectUrl = await getAudioUrl(sentence.text);
+          if (generationRef.current !== generation) return;
+
+          cleanupAudio();
+          const audio = new Audio(objectUrl);
+          audio.playbackRate = 1;
+          audioElementRef.current = audio;
+          audio.ontimeupdate = () => {
+            if (generationRef.current !== generation) return;
+            if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+            const progress = Math.min(audio.currentTime / audio.duration, 1);
+            const charIndex =
+              playback.offset +
+              sentenceStartAt +
+              Math.min(
+                Math.floor(sentence.text.length * progress),
+                sentence.text.length - 1,
+              );
+            currentCharRef.current = charIndex;
+            setActiveCharIndex(charIndex);
+          };
+          audio.onended = () => {
+            if (generationRef.current !== generation) return;
+            cleanupAudio();
+            if (sentenceIndex + 1 < sentences.length) {
+              void playSentence(sentenceIndex + 1);
+            } else {
+              playbackRef.current = null;
+              updateStatus("idle");
+              setActiveSourceId(null);
+              setActiveCharIndex(null);
+            }
+          };
+          audio.onerror = () => {
+            if (generationRef.current !== generation) return;
+            startBrowserPlayback(playback, sentenceStartAt, generation);
+          };
+          if (pausedRef.current) {
+            updateStatus("paused");
+            return;
+          }
+          await audio.play();
+          if (generationRef.current === generation) updateStatus("playing");
+          const nextSentence = sentences[sentenceIndex + 1];
+          if (nextSentence) {
+            void getAudioUrl(nextSentence.text).catch(() => undefined);
+          }
+        } catch {
+          if (generationRef.current === generation) {
+            startBrowserPlayback(playback, sentenceStartAt, generation);
           }
         }
-        if (generationRef.current !== generation) return;
+      };
 
-        cleanupAudio();
-        const audio = new Audio(objectUrl);
-        audio.playbackRate = 1;
-        audioElementRef.current = audio;
-        audio.ontimeupdate = () => {
-          if (generationRef.current !== generation) return;
-          if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
-          const progress = Math.min(audio.currentTime / audio.duration, 1);
-          const charIndex =
-            playback.offset +
-            startAt +
-            Math.min(
-              Math.floor((playback.text.length - startAt) * progress),
-              playback.text.length - startAt - 1,
-            );
-          currentCharRef.current = charIndex;
-          setActiveCharIndex(charIndex);
-        };
-        audio.onended = () => {
-          if (generationRef.current !== generation) return;
-          cleanupAudio();
-          playbackRef.current = null;
-          updateStatus("idle");
-          setActiveSourceId(null);
-          setActiveCharIndex(null);
-        };
-        audio.onerror = () => {
-          if (generationRef.current !== generation) return;
-          startBrowserPlayback(playback, startAt, generation);
-        };
-        if (pausedRef.current) {
-          updateStatus("paused");
-          return;
-        }
-        await audio.play();
-        if (generationRef.current === generation) updateStatus("playing");
-      } catch {
-        if (generationRef.current === generation) {
-          startBrowserPlayback(playback, startAt, generation);
-        }
-      }
+      void playSentence(0);
     },
     [cleanupAudio, generateKokoroAudio, startBrowserPlayback, updateStatus],
   );
@@ -653,6 +694,7 @@ export function useSpeechEngine(): SpeechEngine {
         URL.revokeObjectURL(objectUrl);
       }
       audioCacheRef.current.clear();
+      audioGenerationCacheRef.current.clear();
       for (const pending of pendingRequestsRef.current.values()) {
         clearTimeout(pending.timeout);
         pending.reject(new Error("Speech engine unmounted."));

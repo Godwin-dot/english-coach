@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@google/genai": "^3.3.0",
+    "@huggingface/transformers": "^3.8.1",
     "better-sqlite3": "^13.2.0",
     "drizzle-orm": "^0.45.4",
     "jose": "^6.2.17",
