@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { AudioPlayerBar } from "@/components/AudioPlayerBar";
 import type { DiscoveryCard, ReviewCardView } from "@/domain/cards";
 import type { LessonView } from "@/domain/lessons";
 import type {
@@ -12,6 +13,11 @@ import type {
 import type { CEFRLevel, KeywordItem } from "@/schemas/lesson";
 import type { ReviewRating } from "@/srs";
 import { updateSessionStateField, useSessionState } from "@/hooks/useSessionState";
+import { useSpeechEngine } from "@/hooks/useSpeechEngine";
+import {
+  splitSentencesWithOffsets,
+  tokenizeTextForSpeech,
+} from "@/lib/speech";
 
 type ReviewItem =
   | { kind: "due"; key: string; card: ReviewCardView }
@@ -202,6 +208,7 @@ export function SessionWorkspace({
   const [quizBusy, setQuizBusy] = useState(false);
   const [evaluationBusy, setEvaluationBusy] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const speechEngine = useSpeechEngine();
   const previousQueueKey = useRef<string | null>(null);
   const discoveryRequested = useRef(false);
   const lessonRequested = useRef(false);
@@ -613,6 +620,14 @@ export function SessionWorkspace({
               <p className="mt-6 break-words font-serif text-3xl text-white sm:text-4xl">
                 {revealed ? currentItem.card.translation : currentItem.card.term}
               </p>
+              <AudioPlayerBar
+                className="mt-4"
+                mode="compact"
+                rates={[0.75, 1]}
+                engine={speechEngine}
+                text={revealed ? currentItem.card.translation : currentItem.card.term}
+                sourceId={`session-card:${currentItem.key}:${revealed ? "translation" : "term"}`}
+              />
               {revealed ? (
                 <>
                   <p className="mt-2 text-xs text-zinc-400">
@@ -625,6 +640,18 @@ export function SessionWorkspace({
                       ? currentItem.card.example_sentence
                       : currentItem.card.exampleSentence}
                   </p>
+                  <AudioPlayerBar
+                    className="mt-3"
+                    mode="compact"
+                    rates={[0.75, 1]}
+                    engine={speechEngine}
+                    text={
+                      currentItem.kind === "discovery"
+                        ? currentItem.card.example_sentence
+                        : currentItem.card.exampleSentence
+                    }
+                    sourceId={`session-card:${currentItem.key}:example`}
+                  />
                 </>
               ) : null}
               <RatingButtons
@@ -664,9 +691,62 @@ export function SessionWorkspace({
           ) : lesson ? (
             <>
               <h2 className="mt-2 font-serif text-2xl text-white sm:text-3xl">{lesson.topic}</h2>
-              <p className="mt-4 whitespace-pre-line text-sm leading-7 text-zinc-300">
-                {lesson.content_en}
-              </p>
+              <AudioPlayerBar
+                className="mt-4"
+                engine={speechEngine}
+                text={lesson.content_en}
+                sourceId={`session-lesson:${lesson.id}:full`}
+              />
+              <div className="mt-4 space-y-3">
+                {splitSentencesWithOffsets(lesson.content_en).map((sentence) => {
+                  const sourcePrefix = `session-lesson:${lesson.id}:`;
+                  const sentenceSourceId = `${sourcePrefix}sentence:${sentence.startChar}`;
+                  return (
+                    <p
+                      key={`${sentence.startChar}-${sentence.endChar}`}
+                      className="flex items-start gap-2 text-sm leading-7 text-zinc-300"
+                    >
+                      <button
+                        type="button"
+                        aria-label={`Écouter la phrase ${sentence.text}`}
+                        onClick={() =>
+                          speechEngine.speak(
+                            sentence.text,
+                            sentenceSourceId,
+                            sentence.startChar,
+                          )
+                        }
+                        className="mt-0.5 grid size-11 shrink-0 place-items-center rounded-full text-xs text-zinc-400 transition hover:bg-white/[0.05] hover:text-amber-100 active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-amber-200"
+                      >
+                        ▶
+                      </button>
+                      <span className="min-w-0">
+                        {tokenizeTextForSpeech(sentence.text).map((token) => {
+                          const globalStart = sentence.startChar + token.startChar;
+                          const globalEnd = sentence.startChar + token.endChar;
+                          const isSpeaking =
+                            speechEngine.activeSourceId?.startsWith(sourcePrefix) === true &&
+                            speechEngine.activeCharIndex !== null &&
+                            speechEngine.activeCharIndex >= globalStart &&
+                            speechEngine.activeCharIndex < globalEnd;
+                          return (
+                            <span
+                              key={`${token.startChar}-${token.endChar}`}
+                              className={
+                                isSpeaking && token.isWord
+                                  ? "rounded bg-amber-400/20 px-0.5 text-white"
+                                  : ""
+                              }
+                            >
+                              {token.text}
+                            </span>
+                          );
+                        })}
+                      </span>
+                    </p>
+                  );
+                })}
+              </div>
               <p className="mt-3 whitespace-pre-line border-l border-violet-200/20 pl-4 text-sm leading-6 text-zinc-400">
                 {lesson.content_fr}
               </p>

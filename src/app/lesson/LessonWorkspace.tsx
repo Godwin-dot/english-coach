@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AudioPlayerBar } from "@/components/AudioPlayerBar";
 import { LLMConfigModal } from "@/components/LLMConfigModal";
+import { useSpeechEngine, type SpeechEngine } from "@/hooks/useSpeechEngine";
+import {
+  splitSentencesWithOffsets,
+  tokenizeTextForSpeech,
+} from "@/lib/speech";
 import {
   CEFRLevelSchema,
   type CEFRLevel,
@@ -35,17 +41,6 @@ function currentSentence(content: string, word: string): string {
   );
 }
 
-function speakText(text: string, language: string) {
-  if (!("speechSynthesis" in window)) {
-    return false;
-  }
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = language;
-  window.speechSynthesis.speak(utterance);
-  return true;
-}
-
 function InterestTag({
   interest,
   onSelect,
@@ -66,13 +61,13 @@ function InterestTag({
 
 function WordCard({
   word,
-  language,
+  engine,
   onAddToReview,
   reviewStatus,
   isAddingToReview,
 }: {
   word: KeywordItem | null;
-  language: string;
+  engine: SpeechEngine;
   onAddToReview: () => void;
   reviewStatus: "added" | "already_exists" | "daily_cap_reached" | null;
   isAddingToReview: boolean;
@@ -104,9 +99,9 @@ function WordCard({
         </div>
         <button
           type="button"
-          onClick={() => speakText(word.term, language)}
+          onClick={() => engine.speak(word.term, `lesson-word:${word.term}`)}
           aria-label={`Écouter ${word.term}`}
-          className="grid size-9 shrink-0 place-items-center rounded-lg border border-slate-700 text-indigo-200 transition hover:bg-slate-800"
+          className="grid size-11 shrink-0 place-items-center rounded-lg border border-slate-700 text-indigo-200 transition hover:bg-slate-800"
         >
           <span aria-hidden="true">▶</span>
         </button>
@@ -121,9 +116,11 @@ function WordCard({
           </p>
           <button
             type="button"
-            onClick={() => speakText(word.example, language)}
+            onClick={() =>
+              engine.speak(word.example, `lesson-example:${word.term}`)
+            }
             aria-label="Écouter l’exemple en anglais"
-            className="mt-0.5 text-xs text-slate-500 transition hover:text-indigo-200"
+            className="grid size-11 shrink-0 place-items-center rounded-full text-xs text-slate-400 transition hover:text-indigo-200 focus-visible:outline-2 focus-visible:outline-indigo-300"
           >
             ▶
           </button>
@@ -392,8 +389,7 @@ export function LessonWorkspace({
     "added" | "already_exists" | "daily_cap_reached" | null
   >(null);
   const [isAddingToReview, setIsAddingToReview] = useState(false);
-  const [speechPaused, setSpeechPaused] = useState(false);
-  const [speechLanguage, setSpeechLanguage] = useState("en-US");
+  const speechEngine = useSpeechEngine();
 
   useEffect(() => {
     setLesson(initialLesson);
@@ -571,39 +567,6 @@ export function LessonWorkspace({
     }
   }
 
-  function playLessonAudio() {
-    if (!lesson) {
-      return;
-    }
-    if (!speakText(lesson.content_en, speechLanguage)) {
-      setError("La synthèse vocale n’est pas disponible dans ce navigateur.");
-    }
-    setSpeechPaused(false);
-  }
-
-  function toggleSpeechPause() {
-    if (!("speechSynthesis" in window)) {
-      setError("La synthèse vocale n’est pas disponible dans ce navigateur.");
-      return;
-    }
-    if (window.speechSynthesis.paused) {
-      window.speechSynthesis.resume();
-      setSpeechPaused(false);
-    } else if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.pause();
-      setSpeechPaused(true);
-    } else {
-      playLessonAudio();
-    }
-  }
-
-  function stopLessonAudio() {
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-    }
-    setSpeechPaused(false);
-  }
-
   const keywordTokens = new Set(
     (lesson?.keywords ?? []).flatMap((keyword) =>
       keyword.term
@@ -613,33 +576,37 @@ export function LessonWorkspace({
     ),
   );
 
-  function renderClickableText(content: string) {
-    const tokens =
-      content.match(
-        /[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*|[^\p{L}\p{N}]+/gu,
-      ) ?? [content];
-
-    return tokens.map((token, index) => {
-      if (!wordToken.test(token)) {
-        return <span key={`${index}-${token}`}>{token}</span>;
+  function renderClickableText(content: string, offset: number, sourceId: string) {
+    return tokenizeTextForSpeech(content).map((token, index) => {
+      if (!token.isWord || !wordToken.test(token.text)) {
+        return <span key={`${index}-${token.text}`}>{token.text}</span>;
       }
 
-      const normalized = token.toLocaleLowerCase();
+      const normalized = token.text.toLocaleLowerCase();
       const isKeyword = keywordTokens.has(normalized);
       const isLookingUp = lookupWord.toLocaleLowerCase() === normalized;
+      const globalStart = offset + token.startChar;
+      const globalEnd = offset + token.endChar;
+      const isSpeaking =
+        speechEngine.activeSourceId?.startsWith(sourceId) === true &&
+        speechEngine.activeCharIndex !== null &&
+        speechEngine.activeCharIndex >= globalStart &&
+        speechEngine.activeCharIndex < globalEnd;
       return (
         <button
-          key={`${index}-${token}`}
+          key={`${index}-${token.text}`}
           type="button"
-          onClick={() => void selectWord(token)}
-          aria-label={`Consulter le mot ${token}`}
+          onClick={() => void selectWord(token.text)}
+          aria-label={`Consulter le mot ${token.text}`}
           className={`rounded-sm transition focus-visible:outline-2 focus-visible:outline-indigo-300 ${
             isKeyword
               ? "font-medium text-indigo-200 underline decoration-indigo-400/50 decoration-2 underline-offset-4 hover:text-indigo-100"
               : "text-slate-200 decoration-slate-500/60 underline-offset-4 hover:text-indigo-200 hover:underline"
-          } ${isLookingUp ? "animate-pulse text-indigo-300" : ""}`}
+          } ${isLookingUp ? "animate-pulse text-indigo-300" : ""} ${
+            isSpeaking ? "rounded bg-amber-400/20 px-0.5 text-white" : ""
+          }`}
         >
-          {token}
+          {token.text}
         </button>
       );
     });
@@ -863,45 +830,11 @@ export function LessonWorkspace({
                 Sélectionnez un mot pour explorer son sens dans le texte.
               </p>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <label htmlFor="speech-language" className="sr-only">
-                Accent de lecture
-              </label>
-              <select
-                id="speech-language"
-                className="h-9 rounded-lg border border-slate-700 bg-slate-950 px-2 text-xs text-slate-300"
-                onChange={(event) => {
-                  setSpeechLanguage(event.target.value);
-                }}
-              >
-                <option value="en-US">English US</option>
-                <option value="en-GB">English UK</option>
-              </select>
-              <button
-                type="button"
-                onClick={playLessonAudio}
-                aria-label="Lire le texte anglais"
-                className="grid size-9 place-items-center rounded-lg border border-slate-700 text-slate-300 transition hover:border-indigo-400/40 hover:text-indigo-200"
-              >
-                ▶
-              </button>
-              <button
-                type="button"
-                onClick={toggleSpeechPause}
-                aria-label={speechPaused ? "Reprendre la lecture" : "Mettre en pause"}
-                className="grid size-9 place-items-center rounded-lg border border-slate-700 text-slate-300 transition hover:border-indigo-400/40 hover:text-indigo-200"
-              >
-                {speechPaused ? "▶" : "Ⅱ"}
-              </button>
-              <button
-                type="button"
-                onClick={stopLessonAudio}
-                aria-label="Arrêter la lecture"
-                className="grid size-9 place-items-center rounded-lg border border-slate-700 text-slate-300 transition hover:border-indigo-400/40 hover:text-indigo-200"
-              >
-                ■
-              </button>
-            </div>
+            <AudioPlayerBar
+              engine={speechEngine}
+              text={lesson.content_en}
+              sourceId={`lesson:${lesson.id}:full`}
+            />
           </header>
 
           <div className="grid gap-8 pt-6 xl:grid-cols-[minmax(0,1fr)_300px]">
@@ -918,9 +851,40 @@ export function LessonWorkspace({
                     Les mots en indigo sont les mots-clés
                   </span>
                 </div>
-                <p className="font-serif text-lg leading-[1.95] text-slate-200 sm:text-[19px]">
-                  {renderClickableText(lesson.content_en)}
-                </p>
+                <div className="space-y-3">
+                  {splitSentencesWithOffsets(lesson.content_en).map((sentence) => {
+                    const sourceId = `lesson:${lesson.id}:`;
+                    const sentenceSourceId = `${sourceId}sentence:${sentence.startChar}`;
+                    return (
+                      <p
+                        key={`${sentence.startChar}-${sentence.endChar}`}
+                        className="flex items-start gap-2 font-serif text-lg leading-[1.95] text-slate-200 sm:text-[19px]"
+                      >
+                        <button
+                          type="button"
+                          aria-label={`Écouter la phrase ${sentence.text}`}
+                          onClick={() =>
+                            speechEngine.speak(
+                              sentence.text,
+                              sentenceSourceId,
+                              sentence.startChar,
+                            )
+                          }
+                          className="mt-1 grid size-11 shrink-0 place-items-center rounded-full text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-indigo-200 active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-indigo-300"
+                        >
+                          ▶
+                        </button>
+                        <span className="min-w-0">
+                          {renderClickableText(
+                            sentence.text,
+                            sentence.startChar,
+                            sourceId,
+                          )}
+                        </span>
+                      </p>
+                    );
+                  })}
+                </div>
               </section>
 
               <button
@@ -951,7 +915,7 @@ export function LessonWorkspace({
               {selectedWord ? (
                 <WordCard
                   word={selectedWord}
-                  language={speechLanguage}
+                  engine={speechEngine}
                   reviewStatus={reviewStatus}
                   isAddingToReview={isAddingToReview}
                   onAddToReview={() => void addSelectedWordToReview()}
@@ -966,7 +930,7 @@ export function LessonWorkspace({
               ) : (
                 <WordCard
                   word={null}
-                  language={speechLanguage}
+                  engine={speechEngine}
                   reviewStatus={null}
                   isAddingToReview={false}
                   onAddToReview={() => undefined}

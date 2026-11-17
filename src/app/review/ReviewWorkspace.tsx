@@ -5,6 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { DiscoveryCard, ReviewCardView } from "@/domain/cards";
 import type { ReviewIntervals, ReviewRating } from "@/srs";
 import { useSessionState } from "@/hooks/useSessionState";
+import { AudioPlayerBar } from "@/components/AudioPlayerBar";
+import { useSpeechEngine } from "@/hooks/useSpeechEngine";
 
 type DueQueueItem = {
   key: string;
@@ -82,57 +84,6 @@ function getErrorMessage(body: unknown): string {
   return "La requête n’a pas abouti.";
 }
 
-function speak(text: string, language: string): boolean {
-  if (!("speechSynthesis" in window)) {
-    return false;
-  }
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = language;
-  window.speechSynthesis.speak(utterance);
-  return true;
-}
-
-function AudioButton({
-  text,
-  language,
-  onUnavailable,
-  label,
-}: {
-  text: string;
-  language: string;
-  onUnavailable: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        if (!speak(text, language)) {
-          onUnavailable();
-        }
-      }}
-      aria-label={label}
-      className="grid size-11 shrink-0 place-items-center rounded-full border border-white/[0.1] bg-white/[0.04] text-zinc-200 transition-colors duration-150 hover:border-white/20 hover:bg-white/[0.09] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
-    >
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        fill="none"
-        className="size-[18px]"
-      >
-        <path
-          d="M11 5 6 9H3v6h3l5 4V5Zm4 4a5 5 0 0 1 0 6m3-9a9 9 0 0 1 0 12"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </button>
-  );
-}
-
 function makeDiscoveryQueueItem(data: DiscoveryCard): DiscoveryQueueItem {
   return {
     key: `discovery-${data.discoveryId}`,
@@ -175,7 +126,7 @@ export function ReviewWorkspace({
   const [loadingMore, setLoadingMore] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [accent, setAccent] = useState<"en-US" | "en-GB">("en-US");
+  const speechEngine = useSpeechEngine();
   const startedAt = useRef(Date.now());
   const seenDiscoveryTerms = useRef(new Set(session.seenDiscoveryTerms));
   const loadingMoreRef = useRef(false);
@@ -458,10 +409,6 @@ export function ReviewWorkspace({
     return () => window.removeEventListener("keydown", handleKeyboard);
   }, [currentCard, revealed, setSession, submitReview]);
 
-  function reportAudioUnavailable() {
-    setError("La synthèse vocale n’est pas disponible dans ce navigateur.");
-  }
-
   if (sessionFinished) {
     return (
       <main className="animate-view-enter mx-auto flex min-h-[calc(100vh-7rem)] max-w-5xl items-center px-4 py-10 sm:px-8">
@@ -620,9 +567,9 @@ export function ReviewWorkspace({
           <label className="flex min-h-11 items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 text-xs text-zinc-400">
             Accent
             <select
-              value={accent}
+              value={speechEngine.accent}
               onChange={(event) =>
-                setAccent(event.target.value as "en-US" | "en-GB")
+                speechEngine.setAccent(event.target.value as "en-US" | "en-GB")
               }
               className="bg-transparent font-medium text-zinc-100 outline-none focus-visible:text-white"
               aria-label="Choisir l’accent audio"
@@ -684,11 +631,12 @@ export function ReviewWorkspace({
               <p className="text-xs font-medium text-zinc-400">
                 {queueItem.isDiscovery ? "Nouveau mot" : "English"}
               </p>
-              <AudioButton
+              <AudioPlayerBar
+                mode="compact"
+                rates={[0.75, 1]}
+                engine={speechEngine}
                 text={cardTerm}
-                language={accent}
-                onUnavailable={reportAudioUnavailable}
-                label={`Écouter ${cardTerm}`}
+                sourceId={`review:${queueItem.key}:term`}
               />
             </div>
             <h2 className="relative mt-6 max-w-full break-words font-serif text-4xl tracking-[-0.04em] text-white sm:text-5xl">
@@ -722,11 +670,12 @@ export function ReviewWorkspace({
                 </h2>
                 <p className="mt-1 text-xs text-zinc-500">{cardPhonetic}</p>
               </div>
-              <AudioButton
+              <AudioPlayerBar
+                mode="compact"
+                rates={[0.75, 1]}
+                engine={speechEngine}
                 text={cardTerm}
-                language={accent}
-                onUnavailable={reportAudioUnavailable}
-                label={`Écouter ${cardTerm}`}
+                sourceId={`review:${queueItem.key}:term`}
               />
             </div>
 
@@ -739,11 +688,12 @@ export function ReviewWorkspace({
                 <p className="font-serif text-base italic leading-7 text-zinc-200">
                   “{cardExample}”
                 </p>
-                <AudioButton
+                <AudioPlayerBar
+                  mode="compact"
+                  rates={[0.75, 1]}
+                  engine={speechEngine}
                   text={cardExample}
-                  language={accent}
-                  onUnavailable={reportAudioUnavailable}
-                  label="Écouter l’exemple en anglais"
+                  sourceId={`review:${queueItem.key}:example`}
                 />
               </div>
               <p className="mt-2 text-sm leading-6 text-zinc-500">

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { AudioPlayerBar } from "@/components/AudioPlayerBar";
+import { useSpeechEngine } from "@/hooks/useSpeechEngine";
 import type {
   MistakeCategoryCount,
   RecentMistake,
@@ -65,16 +67,6 @@ function getErrorMessage(body: unknown): string {
     return body.error;
   }
   return "La requête n'a pas abouti.";
-}
-
-function speak(text: string): void {
-  if (!("speechSynthesis" in window)) {
-    return;
-  }
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "en-US";
-  window.speechSynthesis.speak(utterance);
 }
 
 function MistakeList({ mistakes }: { mistakes: RecentMistake[] }) {
@@ -167,6 +159,7 @@ export function DrillWorkspace({
   const [showHint, setShowHint] = useState(false);
   const [microphoneSupported, setMicrophoneSupported] = useState(false);
   const [listening, setListening] = useState(false);
+  const speechEngine = useSpeechEngine();
   const startedAt = useRef(Date.now());
   const recognitionRef = useRef<Recognition | null>(null);
 
@@ -237,7 +230,6 @@ export function DrillWorkspace({
     );
     return () => {
       recognitionRef.current?.stop();
-      window.speechSynthesis?.cancel();
     };
   }, []);
 
@@ -603,26 +595,34 @@ export function DrillWorkspace({
                     Ajouté aux révisions : {evaluation.addedWords.join(", ")}
                   </p>
                 ) : null}
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs text-zinc-500">Traduction de référence</p>
                     <p className="mt-2 break-words font-serif text-lg leading-7 text-white">
                       {evaluation.ideal_translation}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => speak(evaluation.ideal_translation)}
-                    aria-label="Écouter la traduction de référence"
-                    className="grid size-11 shrink-0 place-items-center rounded-full border border-white/[0.09] text-zinc-200 transition hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-200"
-                  >
-                    <span aria-hidden="true">▶</span>
-                  </button>
+                  <AudioPlayerBar
+                    className="max-w-full"
+                    mode="compact"
+                    engine={speechEngine}
+                    text={evaluation.ideal_translation}
+                    sourceId={`drill:${exercise?.french_sentence}:reference`}
+                  />
                 </div>
                 <p className="mt-4 text-xs text-zinc-500">Autre formulation</p>
-                <p className="mt-1 break-words text-sm leading-6 text-zinc-300">
-                  {evaluation.alternative_translation}
-                </p>
+                <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
+                  <p className="min-w-0 flex-1 break-words text-sm leading-6 text-zinc-300">
+                    {evaluation.alternative_translation}
+                  </p>
+                  <AudioPlayerBar
+                    className="max-w-full"
+                    mode="compact"
+                    engine={speechEngine}
+                    text={evaluation.alternative_translation}
+                    sourceId={`drill:${exercise?.french_sentence}:alternative`}
+                  />
+                </div>
               </div>
 
               <div className="mt-5 rounded-2xl border border-violet-200/[0.1] bg-violet-200/[0.04] p-4">

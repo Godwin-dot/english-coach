@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AudioPlayerBar } from "@/components/AudioPlayerBar";
 import type {
   DrillHistoryEntry,
   HistoryCard,
 } from "@/domain/history";
 import type { MistakePattern } from "@/domain/mistakes";
 import { MistakeQuizModal } from "@/components/MistakeQuizModal";
+import { useSpeechEngine } from "@/hooks/useSpeechEngine";
 import type { lessons, mistakes } from "@/db/schema";
 
 type LessonEntry = typeof lessons.$inferSelect;
@@ -22,16 +24,6 @@ type FullHistory = {
 };
 
 type HistoryTab = "vocabulary" | "translations" | "lessons";
-
-function speak(text: string, language: string) {
-  if (!("speechSynthesis" in window)) {
-    return;
-  }
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = language;
-  window.speechSynthesis.speak(utterance);
-}
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -72,6 +64,7 @@ export function HistoryWorkspace({
   initialPatterns: MistakePattern[];
 }) {
   const router = useRouter();
+  const speechEngine = useSpeechEngine();
   const [activeTab, setActiveTab] = useState<HistoryTab>("vocabulary");
   const [search, setSearch] = useState("");
   const [dueOnly, setDueOnly] = useState(false);
@@ -436,15 +429,22 @@ export function HistoryWorkspace({
                     </div>
                   </div>
                   <div className="mt-5 flex flex-wrap justify-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        speak(showBack ? activeCard.translation : activeCard.term, showBack ? "fr-FR" : "en-US")
-                      }
-                      className="min-h-11 rounded-full border border-white/[0.1] px-4 text-sm text-zinc-200 hover:bg-white/[0.05]"
-                    >
-                      Écouter
-                    </button>
+                    <AudioPlayerBar
+                      mode="compact"
+                      rates={[0.75, 1]}
+                      engine={speechEngine}
+                      text={showBack ? activeCard.translation : activeCard.term}
+                      sourceId={`history-practice:${activeCard.id}:${showBack ? "translation" : "term"}`}
+                    />
+                    {showBack ? (
+                      <AudioPlayerBar
+                        mode="compact"
+                        rates={[0.75, 1]}
+                        engine={speechEngine}
+                        text={activeCard.exampleSentence}
+                        sourceId={`history-practice:${activeCard.id}:example`}
+                      />
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => setShowBack((visible) => !visible)}
@@ -534,14 +534,13 @@ export function HistoryWorkspace({
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => speak(card.term, "en-US")}
-                      aria-label={`Écouter ${card.term}`}
-                      className="grid size-11 place-items-center rounded-full border border-white/[0.08] text-zinc-300 hover:bg-white/[0.05]"
-                    >
-                      <span aria-hidden="true">▶</span>
-                    </button>
+                    <AudioPlayerBar
+                      mode="compact"
+                      rates={[0.75, 1]}
+                      engine={speechEngine}
+                      text={card.term}
+                      sourceId={`history-card:${card.id}`}
+                    />
                     <button
                       type="button"
                       onClick={() => void deleteItem("card", card.id)}

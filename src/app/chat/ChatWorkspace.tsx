@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { AudioPlayerBar } from "@/components/AudioPlayerBar";
 import type { CEFRLevel } from "@/schemas/lesson";
 import type { ChatMessageItem } from "@/schemas/chat";
+import { useSpeechEngine } from "@/hooks/useSpeechEngine";
 import { updateSessionStateField, useSessionState } from "@/hooks/useSessionState";
 
 const scenarios = [
@@ -100,16 +102,6 @@ function getErrorMessage(body: unknown): string {
   return "La requête n'a pas abouti.";
 }
 
-function speak(text: string): void {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-    return;
-  }
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "en-US";
-  window.speechSynthesis.speak(utterance);
-}
-
 export function ChatWorkspace({
   cefrLevel,
   hasProviderKey,
@@ -166,6 +158,7 @@ export function ChatWorkspace({
   const [error, setError] = useState("");
   const [microphoneSupported, setMicrophoneSupported] = useState(false);
   const [listening, setListening] = useState(false);
+  const speechEngine = useSpeechEngine();
   const recognitionRef = useRef<Recognition | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -179,7 +172,6 @@ export function ChatWorkspace({
     );
     return () => {
       recognitionRef.current?.stop();
-      window.speechSynthesis?.cancel();
     };
   }, []);
 
@@ -523,13 +515,12 @@ export function ChatWorkspace({
                   {entry.content}
                   {entry.role === "assistant" ? (
                     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/[0.07] pt-2.5">
-                      <button
-                        type="button"
-                        onClick={() => speak(entry.content)}
-                        className="inline-flex min-h-9 items-center rounded-full border border-white/[0.08] px-3 text-xs text-zinc-400 transition hover:bg-white/[0.06] hover:text-white"
-                      >
-                        Écouter
-                      </button>
+                      <AudioPlayerBar
+                        mode="compact"
+                        engine={speechEngine}
+                        text={entry.content}
+                        sourceId={`chat:${sessionId}:${entry.id}:reply`}
+                      />
                       {entry.translation ? (
                         <details className="min-w-0 flex-1">
                           <summary className="min-h-9 cursor-pointer list-none rounded-full border border-white/[0.08] px-3 py-2 text-center text-xs text-zinc-400 transition hover:bg-white/[0.06] hover:text-white">
@@ -559,10 +550,18 @@ export function ChatWorkspace({
                       {entry.coaching.score < 8.5 ||
                       entry.coaching.natural_version.toLowerCase() !==
                         entry.content.toLowerCase() ? (
-                        <p className="break-words text-sm leading-6 text-zinc-200">
-                          <span className="text-zinc-500">Version native : </span>
-                          {entry.coaching.natural_version}
-                        </p>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <p className="min-w-0 flex-1 break-words text-sm leading-6 text-zinc-200">
+                            <span className="text-zinc-500">Version native : </span>
+                            {entry.coaching.natural_version}
+                          </p>
+                          <AudioPlayerBar
+                            mode="compact"
+                            engine={speechEngine}
+                            text={entry.coaching.natural_version}
+                            sourceId={`chat:${sessionId}:${entry.id}:native`}
+                          />
+                        </div>
                       ) : (
                         <p className="text-sm text-emerald-200">
                           Votre formulation est déjà naturelle.
