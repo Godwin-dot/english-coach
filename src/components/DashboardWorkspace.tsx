@@ -2,12 +2,18 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ActivityHeatmap } from "@/components/ActivityHeatmap";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import type { DashboardStats } from "@/domain/stats";
 import type { AppSettings } from "@/schemas/settings";
 
-function pluralize(value: number, singular: string, plural: string) {
-  return `${value} ${value === 1 ? singular : plural}`;
+function countLabel(value: number, singular: string, plural: string) {
+  return (
+    <>
+      <span className="tabular-nums">{value}</span>{" "}
+      {value === 1 ? singular : plural}
+    </>
+  );
 }
 
 export function DashboardWorkspace({
@@ -27,6 +33,23 @@ export function DashboardWorkspace({
 
   const weeklyGoalReached = stats.activeDaysThisWeek >= appSettings.weeklyGoalDays;
   const reviewableCards = Math.min(stats.totalDueCards, appSettings.dailyReviewCap);
+  const { deckBreakdown, recentAverageScore } = stats;
+  const deckSegments = [
+    { key: "fresh", label: "Nouvelles", value: deckBreakdown.fresh, color: "bg-zinc-500" },
+    { key: "learning", label: "En acquisition", value: deckBreakdown.learning, color: "bg-amber-300" },
+    { key: "mastered", label: "Maîtrisées", value: deckBreakdown.mastered, color: "bg-emerald-300" },
+  ];
+  const scoreDeltaLabel =
+    recentAverageScore.delta === null
+      ? "Pas encore assez d’évaluations pour comparer"
+      : Math.abs(recentAverageScore.delta) < 0.05
+        ? "Stable par rapport aux précédentes"
+        : `${recentAverageScore.delta > 0 ? "↗ +" : "↘ -"}${Math.abs(
+            recentAverageScore.delta,
+          ).toLocaleString("fr-FR", {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          })} point${Math.abs(recentAverageScore.delta) >= 2 ? "s" : ""}`;
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-7 sm:pt-9">
@@ -62,14 +85,17 @@ export function DashboardWorkspace({
               </p>
               <p className="mt-3 text-sm text-zinc-400">
                 {reviewableCards
-                  ? pluralize(reviewableCards, "carte disponible", "cartes disponibles")
+                  ? countLabel(reviewableCards, "carte disponible", "cartes disponibles")
                   : stats.totalDueCards
                     ? "Votre plafond quotidien est atteint."
                     : "Aucune carte à revoir pour le moment."}
               </p>
               {stats.totalDueCards > reviewableCards ? (
                 <p className="mt-1 text-xs text-zinc-500">
-                  {stats.totalDueCards - reviewableCards} carte
+                  <span className="tabular-nums">
+                    {stats.totalDueCards - reviewableCards}
+                  </span>{" "}
+                  carte
                   {stats.totalDueCards - reviewableCards === 1 ? "" : "s"} restante
                   {stats.totalDueCards - reviewableCards === 1 ? "" : "s"} au-delà du plafond quotidien.
                 </p>
@@ -110,7 +136,7 @@ export function DashboardWorkspace({
             <h2 className="text-sm font-medium text-zinc-300">Nouvelle leçon</h2>
             <p className="mt-4 text-2xl font-semibold tracking-tight text-white">
               {stats.lessonsCompletedToday
-                ? pluralize(
+                ? countLabel(
                     stats.lessonsCompletedToday,
                     "leçon terminée aujourd’hui",
                     "leçons terminées aujourd’hui",
@@ -118,7 +144,9 @@ export function DashboardWorkspace({
                 : "Choisissez un sujet"}
             </p>
             <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-400">
-              {stats.newCardsToday} / {appSettings.dailyNewCards} mots ajoutés
+              <span className="tabular-nums">{stats.newCardsToday}</span> /{" "}
+              <span className="tabular-nums">{appSettings.dailyNewCards}</span>{" "}
+              mots ajoutés
               aujourd’hui.
             </p>
           </div>
@@ -149,7 +177,7 @@ export function DashboardWorkspace({
             <span className="mt-1 block text-sm text-zinc-400">
               Entraînez-vous à produire vos mots et expressions.
               {mistakeCount > 0
-                ? ` ${mistakeCount} point${mistakeCount === 1 ? "" : "s"} de vigilance ciblé${mistakeCount === 1 ? "" : "s"}.`
+                ? <> <span className="tabular-nums">{mistakeCount}</span> point{mistakeCount === 1 ? "" : "s"} de vigilance ciblé{mistakeCount === 1 ? "" : "s"}.</>
                 : ""}
             </span>
           </span>
@@ -195,7 +223,8 @@ export function DashboardWorkspace({
               Point de vigilance
             </span>
             <span className="mt-1 block text-sm text-zinc-400">
-              {mistakeCount} erreurs enregistrées : révisez les pièges qui reviennent.
+              <span className="tabular-nums">{mistakeCount}</span> erreurs
+              enregistrées : révisez les pièges qui reviennent.
             </span>
           </span>
           <span className="ml-auto inline-flex min-h-11 items-center rounded-full border border-white/[0.1] bg-white/[0.05] px-4 text-sm text-zinc-100 transition group-hover:bg-white/[0.1]">
@@ -203,6 +232,108 @@ export function DashboardWorkspace({
           </span>
         </Link>
       ) : null}
+
+      <section
+        aria-label="Activité et progression du vocabulaire"
+        className="mt-3 grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.8fr)]"
+      >
+        <ActivityHeatmap
+          days={stats.heatmap84d}
+          activeDays={stats.activeDays84d}
+        />
+
+        <article className="min-w-0 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight text-white">
+                Vocabulaire & progression
+              </h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                Maturité de votre deck et tendance des scores.
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs text-zinc-300">
+              <span className="tabular-nums">{deckBreakdown.total}</span>{" "}
+              cartes
+            </span>
+          </div>
+
+          <div
+            role="img"
+            aria-label={deckSegments
+              .map(({ label, value }) => `${label}: ${value}`)
+              .join(", ")}
+            className="mt-6 flex h-3 overflow-hidden rounded-full bg-white/[0.05]"
+          >
+            {deckSegments.map((segment) => (
+              <span
+                key={segment.key}
+                className={`h-full ${segment.color}`}
+                style={{
+                  width:
+                    deckBreakdown.total > 0
+                      ? `${(segment.value / deckBreakdown.total) * 100}%`
+                      : "0%",
+                }}
+              />
+            ))}
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {deckSegments.map((segment) => (
+              <div key={segment.key} className="min-w-0">
+                <p className="flex items-center gap-1.5 text-[11px] leading-4 text-zinc-400">
+                  <span className={`size-2 shrink-0 rounded-full ${segment.color}`} />
+                  <span className="truncate">{segment.label}</span>
+                </p>
+                <p className="mt-1 text-lg font-semibold tabular-nums text-white">
+                  {segment.value}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 border-t border-white/[0.07] pt-5">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xs text-zinc-400">Moyenne des évaluations récentes</p>
+                <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-white">
+                  {recentAverageScore.currentAvg === null
+                    ? "—"
+                    : `${recentAverageScore.currentAvg.toLocaleString("fr-FR", {
+                        minimumFractionDigits: 1,
+                        maximumFractionDigits: 1,
+                      })} / 10`}
+                </p>
+              </div>
+              <p
+                className={`text-right text-xs tabular-nums ${
+                  recentAverageScore.delta === null
+                    ? "text-zinc-500"
+                    : recentAverageScore.delta > 0
+                      ? "text-emerald-200"
+                      : recentAverageScore.delta < 0
+                        ? "text-amber-200"
+                        : "text-zinc-400"
+                }`}
+              >
+                {scoreDeltaLabel}
+              </p>
+            </div>
+            <p className="mt-1 text-xs text-zinc-500">
+              <span className="tabular-nums">{recentAverageScore.sampleCount}</span>{" "}
+              / 10 dernières évaluations
+            </p>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/[0.07] bg-black/20 px-4 py-3">
+            <span className="text-sm text-zinc-400">Étude · 7 derniers jours</span>
+            <span className="text-sm font-semibold tabular-nums text-white">
+              {stats.weeklyStudyMinutes} min
+            </span>
+          </div>
+        </article>
+      </section>
 
       <section
         aria-labelledby="weekly-progress-title"
@@ -254,8 +385,10 @@ export function DashboardWorkspace({
           ))}
         </div>
         <p className="mt-4 text-xs text-zinc-500">
-          {pluralize(stats.totalCards, "carte dans votre deck", "cartes dans votre deck")}
-          {" · "}objectif de {appSettings.weeklyGoalDays} jours par semaine
+          {countLabel(stats.totalCards, "carte dans votre deck", "cartes dans votre deck")}
+          {" · "}objectif de{" "}
+          <span className="tabular-nums">{appSettings.weeklyGoalDays}</span> jours
+          par semaine
         </p>
       </section>
 
