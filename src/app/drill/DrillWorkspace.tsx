@@ -15,6 +15,7 @@ import type {
 } from "@/schemas/drill";
 import type { CEFRLevel } from "@/schemas/lesson";
 import { updateSessionStateField, useSessionState } from "@/hooks/useSessionState";
+import { useHotkeys } from "@/hooks/useHotkeys";
 
 type DrillExercise = GeneratedDrillPrompt & {
   cefrLevel: CEFRLevel;
@@ -321,6 +322,37 @@ export function DrillWorkspace({
         ? "border-amber-300/20 bg-amber-300/[0.08] text-amber-100"
         : "border-rose-300/20 bg-rose-300/[0.08] text-rose-100";
 
+  useHotkeys([
+    {
+      key: "Enter",
+      ctrlOrMeta: true,
+      allowInInputs: true,
+      enabled: exercise !== null && busy === null,
+      action: (event) => {
+        event.preventDefault();
+        if (evaluation) {
+          void loadExercise();
+        } else {
+          void submitTranslation();
+        }
+      },
+    },
+    {
+      key: "r",
+      altKey: true,
+      enabled: evaluation !== null && busy === null,
+      action: (event) => {
+        event.preventDefault();
+        if (evaluation) {
+          speechEngine.speak(
+            evaluation.ideal_translation,
+            `drill:${exercise?.french_sentence}:reference`,
+          );
+        }
+      },
+    },
+  ]);
+
   return (
     <main className="animate-view-enter mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-7 sm:pt-9">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -469,22 +501,13 @@ export function DrillWorkspace({
                 id="drill-translation"
                 value={translation}
                 onChange={(event) => setTranslation(event.target.value)}
-                onKeyDown={(event) => {
-                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-                    event.preventDefault();
-                    void submitTranslation();
-                  }
-                }}
                 disabled={evaluation !== null || busy !== null}
                 maxLength={500}
                 rows={4}
                 placeholder="Écrivez votre phrase en anglais…"
                 className="mt-2 min-h-32 w-full resize-y rounded-2xl border border-white/[0.1] bg-black/25 px-4 py-3.5 text-base leading-7 text-zinc-100 outline-none transition focus:border-violet-200/40 focus:ring-2 focus:ring-violet-200/10 disabled:opacity-70"
               />
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-zinc-500">
-                  Ctrl + Entrée ou ⌘ + Entrée pour évaluer
-                </p>
+              <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
                 {microphoneSupported ? (
                   <button
                     type="button"
@@ -514,6 +537,9 @@ export function DrillWorkspace({
                     className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                   >
                     {busy === "evaluate" ? "Évaluation…" : "Évaluer ma traduction"}
+                    <span className="hidden text-xs font-normal text-zinc-600 sm:inline">
+                      (Ctrl + Entrée)
+                    </span>
                   </button>
                 ) : (
                   <button
@@ -523,6 +549,9 @@ export function DrillWorkspace({
                     className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 active:scale-[0.98] disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                   >
                     Phrase suivante <span aria-hidden="true" className="ml-2">→</span>
+                    <span className="hidden text-xs font-normal text-zinc-600 sm:inline">
+                      (Ctrl + Entrée)
+                    </span>
                   </button>
                 )}
                 <button

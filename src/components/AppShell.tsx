@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LLMConfigModal } from "./LLMConfigModal";
+import { KeyboardShortcutsHelp } from "./KeyboardShortcutsHelp";
 
 const navigation = [
   { href: "/", label: "Tableau de bord", mobileLabel: "Aujourd'hui", icon: "grid" },
@@ -187,6 +188,7 @@ export function AppShell({
         </nav>
 
         <div className="mt-auto space-y-2 border-t border-white/[0.07] pt-5">
+          <KeyboardShortcutsHelp />
           <div className="relative">
             <span
               aria-hidden="true"

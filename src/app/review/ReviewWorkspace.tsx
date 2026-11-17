@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { DiscoveryCard, ReviewCardView } from "@/domain/cards";
 import type { ReviewIntervals, ReviewRating } from "@/srs";
 import { useSessionState } from "@/hooks/useSessionState";
+import { useHotkeys } from "@/hooks/useHotkeys";
 import { AudioPlayerBar } from "@/components/AudioPlayerBar";
 import { useSpeechEngine } from "@/hooks/useSpeechEngine";
 
@@ -381,33 +382,40 @@ export function ReviewWorkspace({
     }
   }, [isHydrated, isSubmitting, setSession]);
 
-  useEffect(() => {
-    function handleKeyboard(event: KeyboardEvent) {
-      const target = event.target;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement
-      ) {
-        return;
-      }
-
-      if ((event.code === "Space" || event.key === "Enter") && !revealed && currentCard) {
-        event.preventDefault();
-        setSession((current) => ({ ...current, revealed: true }));
-        return;
-      }
-
-      const rating = Number(event.key);
-      if (revealed && rating >= 1 && rating <= 4) {
-        event.preventDefault();
-        void submitReview(rating as ReviewRating);
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyboard);
-    return () => window.removeEventListener("keydown", handleKeyboard);
-  }, [currentCard, revealed, setSession, submitReview]);
+  useHotkeys(
+    [
+      {
+        key: "Space",
+        enabled: !revealed && currentCard !== null,
+        action: () =>
+          setSession((current) => ({ ...current, revealed: true })),
+      },
+      {
+        key: "Enter",
+        enabled: !revealed && currentCard !== null,
+        action: () =>
+          setSession((current) => ({ ...current, revealed: true })),
+      },
+      ...ratingButtons.map(({ rating }) => ({
+        key: String(rating),
+        enabled: revealed && !isSubmitting,
+        action: () => void submitReview(rating),
+      })),
+      {
+        key: "r",
+        enabled: currentCard !== null,
+        action: () => {
+          if (currentCard && queueItem) {
+            speechEngine.speak(
+              currentCard.term,
+              `review:${queueItem.key}:term`,
+            );
+          }
+        },
+      },
+    ],
+    !sessionFinished,
+  );
 
   if (sessionFinished) {
     return (
@@ -711,6 +719,11 @@ export function ReviewWorkspace({
           {error}
         </p>
       ) : null}
+
+      <p className="mt-4 hidden items-center justify-center gap-2 text-xs text-zinc-500 sm:flex">
+        Espace : retourner <span aria-hidden="true">·</span> 1-4 : noter{" "}
+        <span aria-hidden="true">·</span> R : écouter
+      </p>
 
       {revealed ? (
         <section aria-label="Évaluer votre réponse" className="mt-5">

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { AudioPlayerBar } from "@/components/AudioPlayerBar";
 import { LLMConfigModal } from "@/components/LLMConfigModal";
 import { useSpeechEngine, type SpeechEngine } from "@/hooks/useSpeechEngine";
+import { useHotkeys } from "@/hooks/useHotkeys";
 import {
   splitSentencesWithOffsets,
   tokenizeTextForSpeech,
@@ -616,6 +617,34 @@ export function LessonWorkspace({
   const requestedLessonMissing =
     requestedLessonId !== null &&
     (!lesson || lesson.id.toString() !== requestedLessonId);
+
+  useHotkeys([
+    {
+      key: "p",
+      altKey: true,
+      enabled: lesson !== null,
+      action: (event) => {
+        event.preventDefault();
+        if (!lesson) return;
+        const sourceId = `lesson:${lesson.id}:full`;
+        if (speechEngine.activeSourceId === sourceId) {
+          if (speechEngine.status === "playing") speechEngine.pause();
+          else speechEngine.resume();
+        } else {
+          speechEngine.speak(lesson.content_en, sourceId);
+        }
+      },
+    },
+    {
+      key: "Escape",
+      enabled: selectedWord !== null || lookupWord.length > 0,
+      action: () => {
+        setSelectedWord(null);
+        setLookupWord("");
+        setReviewStatus(null);
+      },
+    },
+  ]);
 
   return (
     <main className="mx-auto max-w-7xl px-4 pb-8 pt-8 sm:px-8 sm:pt-12">

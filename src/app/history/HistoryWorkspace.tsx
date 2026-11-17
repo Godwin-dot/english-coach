@@ -10,6 +10,7 @@ import type {
 } from "@/domain/history";
 import type { MistakePattern } from "@/domain/mistakes";
 import { MistakeQuizModal } from "@/components/MistakeQuizModal";
+import { useHotkeys } from "@/hooks/useHotkeys";
 import { useSpeechEngine } from "@/hooks/useSpeechEngine";
 import type { lessons, mistakes } from "@/db/schema";
 
@@ -247,6 +248,52 @@ export function HistoryWorkspace({
     setShowBack(false);
   }
 
+  useHotkeys([
+    {
+      key: "Space",
+      enabled:
+        freePractice &&
+        activeTab === "vocabulary" &&
+        !showBack &&
+        activeCard !== null,
+      action: () => setShowBack(true),
+    },
+    {
+      key: "Enter",
+      enabled:
+        freePractice &&
+        activeTab === "vocabulary" &&
+        !showBack &&
+        activeCard !== null,
+      action: () => setShowBack(true),
+    },
+    {
+      key: "ArrowLeft",
+      enabled:
+        freePractice && activeTab === "vocabulary" && activeCard !== null,
+      action: () => movePractice(-1),
+    },
+    {
+      key: "ArrowRight",
+      enabled:
+        freePractice && activeTab === "vocabulary" && activeCard !== null,
+      action: () => movePractice(1),
+    },
+    {
+      key: "r",
+      enabled:
+        freePractice && activeTab === "vocabulary" && activeCard !== null,
+      action: () => {
+        if (activeCard) {
+          speechEngine.speak(
+            activeCard.term,
+            `history-practice:${activeCard.id}:term`,
+          );
+        }
+      },
+    },
+  ]);
+
   return (
     <main className="animate-view-enter mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-7 sm:pt-9">
       <header className="mb-6">
@@ -471,6 +518,17 @@ export function HistoryWorkspace({
                       Suivante →
                     </button>
                   </div>
+                  <p className="mt-3 hidden justify-center text-xs text-zinc-500 sm:flex">
+                    Espace : retourner
+                    <span className="mx-2" aria-hidden="true">
+                      ·
+                    </span>
+                    ← / → : naviguer
+                    <span className="mx-2" aria-hidden="true">
+                      ·
+                    </span>
+                    R : écouter
+                  </p>
                   <p className="mt-3 text-center text-xs text-zinc-500">
                     Ce mode ne modifie pas vos échéances de révision.
                   </p>
