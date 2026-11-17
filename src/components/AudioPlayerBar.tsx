@@ -1,6 +1,7 @@
 "use client";
 
 import type { SpeechEngine, SpeechRate } from "@/hooks/useSpeechEngine";
+import { KOKORO_VOICES } from "@/lib/speech";
 
 const rates: SpeechRate[] = [0.75, 1, 1.2];
 
@@ -89,6 +90,78 @@ export function AudioPlayerBar({
 
       {mode === "full" ? (
         <>
+          <div
+            role="group"
+            aria-label="Moteur vocal"
+            className="flex min-h-11 items-center gap-1 rounded-full border border-white/[0.07] bg-black/20 p-1"
+          >
+            <button
+              type="button"
+              aria-pressed={engine.engineMode === "browser"}
+              onClick={() => engine.setEngineMode("browser")}
+              className={`min-h-9 rounded-full px-3 text-xs transition-all duration-150 active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-amber-200 ${
+                engine.engineMode === "browser"
+                  ? "bg-white/[0.12] font-medium text-white"
+                  : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200"
+              }`}
+            >
+              Navigateur
+            </button>
+            <button
+              type="button"
+              aria-pressed={engine.engineMode === "kokoro"}
+              onClick={() => engine.setEngineMode("kokoro")}
+              className={`min-h-9 rounded-full px-3 text-xs transition-all duration-150 active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-amber-200 ${
+                engine.engineMode === "kokoro"
+                  ? "bg-white/[0.12] font-medium text-white"
+                  : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200"
+              }`}
+            >
+              {engine.kokoroStatus === "unloaded"
+                ? "Activer la voix Studio (80 Mo)"
+                : "Voix Studio · Kokoro"}
+            </button>
+          </div>
+          {engine.engineMode === "kokoro" &&
+          engine.kokoroStatus !== "ready" ? (
+            <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-xs text-zinc-300">
+              {engine.kokoroStatus === "loading" ? (
+                <>
+                  <div
+                    className="h-1.5 min-w-16 flex-1 overflow-hidden rounded-full bg-white/[0.08]"
+                    role="progressbar"
+                    aria-label="Chargement du modèle Kokoro"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={engine.kokoroProgress}
+                  >
+                    <div
+                      className="h-full rounded-full bg-amber-300 transition-[width] duration-150"
+                      style={{ width: `${engine.kokoroProgress}%` }}
+                    />
+                  </div>
+                  <span className="shrink-0 tabular-nums">
+                    Chargement {engine.kokoroProgress}%…
+                  </span>
+                </>
+              ) : engine.kokoroStatus === "error" ? (
+                <>
+                  <span>La voix Studio est indisponible ; la voix navigateur reste active.</span>
+                  <button
+                    type="button"
+                    onClick={engine.initKokoroModel}
+                    className="min-h-11 shrink-0 rounded-full border border-white/[0.1] bg-white/[0.05] px-3 text-xs text-white transition-all duration-150 hover:bg-white/[0.1] active:scale-[0.985] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
+                  >
+                    {engine.kokoroStatus === "error"
+                      ? "Réessayer"
+                      : "Activer la voix Studio (80 Mo)"}
+                  </button>
+                </>
+              ) : (
+                <span>Modèle local · environ 80 Mo</span>
+              )}
+            </div>
+          ) : null}
           <label className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/[0.07] px-3 text-xs text-zinc-400">
             Accent
             <select
@@ -107,24 +180,40 @@ export function AudioPlayerBar({
             Voix
             <select
               aria-label="Voix anglaise"
-              value={
-                engine.availableVoices.some(
-                  (voice) => voice.voiceURI === engine.selectedVoiceURI,
-                )
+              value={engine.engineMode === "kokoro"
+                ? (KOKORO_VOICES.some(
+                    (voice) => voice.id === engine.selectedVoiceURI,
+                  )
+                    ? engine.selectedVoiceURI
+                    : engine.accent === "en-GB"
+                      ? "bf_emma"
+                      : "af_heart")
+                : engine.availableVoices.some(
+                      (voice) => voice.voiceURI === engine.selectedVoiceURI,
+                    )
                   ? engine.selectedVoiceURI
-                  : ""
-              }
+                  : ""}
               onChange={(event) =>
                 engine.setSelectedVoiceURI(event.target.value)
               }
               className="min-h-9 min-w-0 max-w-[190px] bg-transparent text-xs text-zinc-100 outline-none focus-visible:text-white"
             >
-              <option value="">Recommandée</option>
-              {engine.availableVoices.map((voice) => (
-                <option key={voice.voiceURI} value={voice.voiceURI}>
-                  {voice.name} · {voice.lang}
-                </option>
-              ))}
+              {engine.engineMode === "kokoro" ? (
+                KOKORO_VOICES.map((voice) => (
+                  <option key={voice.id} value={voice.id}>
+                    {voice.label}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="">Recommandée</option>
+                  {engine.availableVoices.map((voice) => (
+                    <option key={voice.voiceURI} value={voice.voiceURI}>
+                      {voice.name} · {voice.lang}
+                    </option>
+                  ))}
+                </>
+              )}
             </select>
           </label>
         </>

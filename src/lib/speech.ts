@@ -1,4 +1,18 @@
 export type EnglishAccent = "en-US" | "en-GB";
+export type SpeechEngineMode = "kokoro" | "browser";
+
+export const KOKORO_VOICES = [
+  { id: "af_heart", label: "Heart (US · Studio)", accent: "en-US" },
+  { id: "af_bella", label: "Bella (US · Claire)", accent: "en-US" },
+  { id: "am_michael", label: "Michael (US · Naturel)", accent: "en-US" },
+  { id: "am_fenrir", label: "Fenrir (US · Grave)", accent: "en-US" },
+  { id: "bf_emma", label: "Emma (UK · Studio)", accent: "en-GB" },
+  { id: "bm_george", label: "George (UK · Studio)", accent: "en-GB" },
+] as const satisfies ReadonlyArray<{
+  id: string;
+  label: string;
+  accent: EnglishAccent;
+}>;
 
 export type SpeechToken = {
   text: string;

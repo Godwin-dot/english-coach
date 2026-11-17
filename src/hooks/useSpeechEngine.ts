@@ -3,11 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getRankedEnglishVoices,
+  KOKORO_VOICES,
   type EnglishAccent,
+  type SpeechEngineMode,
 } from "@/lib/speech";
 
 export type SpeechRate = 0.75 | 1 | 1.2;
 export type SpeechStatus = "idle" | "playing" | "paused";
+export type KokoroStatus = "unloaded" | "loading" | "ready" | "error";
 
 export type SpeechEngine = {
   status: SpeechStatus;
@@ -17,6 +20,11 @@ export type SpeechEngine = {
   accent: EnglishAccent;
   selectedVoiceURI: string;
   availableVoices: SpeechSynthesisVoice[];
+  engineMode: SpeechEngineMode;
+  kokoroStatus: KokoroStatus;
+  kokoroProgress: number;
+  initKokoroModel: () => void;
+  setEngineMode: (mode: SpeechEngineMode) => void;
   speak: (text: string, sourceId?: string, charOffset?: number) => void;
   pause: () => void;
   resume: () => void;
@@ -32,9 +40,16 @@ type Playback = {
   offset: number;
 };
 
+type WorkerResponse =
+  | { type: "progress"; progress: number }
+  | { type: "ready" }
+  | { type: "audio"; requestId: string; blob: Blob }
+  | { type: "error"; requestId?: string; message: string };
+
 const rateKey = "ec_speech_rate";
 const accentKey = "ec_speech_accent";
 const voiceKey = "ec_speech_voice_uri";
+const engineKey = "ec_speech_engine";
 
 function isSpeechRate(value: string | null): value is `${SpeechRate}` {
   return value === "0.75" || value === "1" || value === "1.2";
@@ -42,6 +57,14 @@ function isSpeechRate(value: string | null): value is `${SpeechRate}` {
 
 function isEnglishAccent(value: string | null): value is EnglishAccent {
   return value === "en-US" || value === "en-GB";
+}
+
+function isEngineMode(value: string | null): value is SpeechEngineMode {
+  return value === "kokoro" || value === "browser";
+}
+
+function defaultKokoroVoice(accent: EnglishAccent): string {
+  return accent === "en-GB" ? "bf_emma" : "af_heart";
 }
 
 function readPreference(key: string): string | null {
@@ -71,8 +94,15 @@ export function useSpeechEngine(): SpeechEngine {
   const [availableVoices, setAvailableVoices] = useState<
     SpeechSynthesisVoice[]
   >([]);
+  const [engineMode, setEngineModeState] = useState<SpeechEngineMode>("browser");
+  const [kokoroStatus, setKokoroStatus] = useState<KokoroStatus>("unloaded");
+  const [kokoroProgress, setKokoroProgress] = useState(0);
   const playbackRef = useRef<Playback | null>(null);
   const generationRef = useRef(0);
+  const statusRef = useRef<SpeechStatus>("idle");
+  const engineModeRef = useRef<SpeechEngineMode>("browser");
+  const kokoroStatusRef = useRef<KokoroStatus>("unloaded");
+  const pausedRef = useRef(false);
   const playbackSettingsRef = useRef({
     rate: 1 as SpeechRate,
     accent: "en-US" as EnglishAccent,
@@ -87,6 +117,30 @@ export function useSpeechEngine(): SpeechEngine {
   );
   const playbackStartedAtRef = useRef(0);
   const boundaryReceivedRef = useRef(false);
+  const workerRef = useRef<Worker | null>(null);
+  const requestIdRef = useRef(0);
+  const pendingRequestsRef = useRef(
+    new Map<
+      string,
+      {
+        resolve: (blob: Blob) => void;
+        reject: (error: Error) => void;
+        timeout: ReturnType<typeof setTimeout>;
+      }
+    >(),
+  );
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
+  const audioCacheRef = useRef(new Map<string, string>());
+
+  const updateStatus = useCallback((next: SpeechStatus) => {
+    statusRef.current = next;
+    setStatus(next);
+  }, []);
+
+  const updateKokoroStatus = useCallback((next: KokoroStatus) => {
+    kokoroStatusRef.current = next;
+    setKokoroStatus(next);
+  }, []);
 
   const clearFallback = useCallback(() => {
     if (fallbackTimeoutRef.current) clearTimeout(fallbackTimeoutRef.current);
@@ -95,21 +149,50 @@ export function useSpeechEngine(): SpeechEngine {
     fallbackIntervalRef.current = null;
   }, []);
 
+  const cleanupAudio = useCallback(() => {
+    const audio = audioElementRef.current;
+    if (!audio) return;
+    audio.pause();
+    audio.ontimeupdate = null;
+    audio.onended = null;
+    audio.onerror = null;
+    audio.removeAttribute("src");
+    audio.load();
+    audioElementRef.current = null;
+  }, []);
+
   const stop = useCallback(() => {
     generationRef.current += 1;
     clearFallback();
+    cleanupAudio();
     playbackRef.current = null;
     currentCharRef.current = 0;
+    pausedRef.current = false;
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
-    setStatus("idle");
+    updateStatus("idle");
     setActiveSourceId(null);
     setActiveCharIndex(null);
-  }, [clearFallback]);
+  }, [cleanupAudio, clearFallback, updateStatus]);
 
-  const startPlayback = useCallback(
-    (playback: Playback, startAt: number, nextRate?: SpeechRate) => {
+  const failWorker = useCallback(
+    (message: string) => {
+      updateKokoroStatus("error");
+      const worker = workerRef.current;
+      workerRef.current = null;
+      worker?.terminate();
+      for (const [requestId, pending] of pendingRequestsRef.current) {
+        clearTimeout(pending.timeout);
+        pending.reject(new Error(message));
+        pendingRequestsRef.current.delete(requestId);
+      }
+    },
+    [updateKokoroStatus],
+  );
+
+  const startBrowserPlayback = useCallback(
+    (playback: Playback, startAt: number, generation: number) => {
       if (
         typeof window === "undefined" ||
         !("speechSynthesis" in window) ||
@@ -119,6 +202,7 @@ export function useSpeechEngine(): SpeechEngine {
         return;
       }
 
+      cleanupAudio();
       clearFallback();
       const settings = playbackSettingsRef.current;
       const voiceList = getRankedEnglishVoices(settings.accent);
@@ -129,18 +213,16 @@ export function useSpeechEngine(): SpeechEngine {
         playback.text.slice(startAt),
       );
       utterance.lang = settings.accent;
-      utterance.rate = nextRate ?? settings.rate;
+      utterance.rate = settings.rate;
       if (selectedVoice) utterance.voice = selectedVoice;
 
       playbackRef.current = playback;
-      const generation = generationRef.current + 1;
-      generationRef.current = generation;
       playbackStartedAtRef.current = Date.now();
       currentCharRef.current = playback.offset + startAt;
       boundaryReceivedRef.current = false;
       setActiveSourceId(playback.sourceId);
       setActiveCharIndex(playback.offset + startAt);
-      setStatus("playing");
+      updateStatus(pausedRef.current ? "paused" : "playing");
 
       utterance.onboundary = (event) => {
         if (generationRef.current !== generation) return;
@@ -155,7 +237,7 @@ export function useSpeechEngine(): SpeechEngine {
         if (generationRef.current !== generation) return;
         clearFallback();
         playbackRef.current = null;
-        setStatus("idle");
+        updateStatus("idle");
         setActiveSourceId(null);
         setActiveCharIndex(null);
       };
@@ -164,13 +246,13 @@ export function useSpeechEngine(): SpeechEngine {
         if (event.error === "canceled" || event.error === "interrupted") return;
         clearFallback();
         playbackRef.current = null;
-        setStatus("idle");
+        updateStatus("idle");
         setActiveSourceId(null);
         setActiveCharIndex(null);
       };
 
       window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
+      if (!pausedRef.current) window.speechSynthesis.speak(utterance);
 
       fallbackTimeoutRef.current = setTimeout(() => {
         if (
@@ -192,7 +274,8 @@ export function useSpeechEngine(): SpeechEngine {
           const elapsedMs = Date.now() - playbackStartedAtRef.current;
           const durationMs = Math.max(
             900,
-            ((playback.text.length - startAt) * 55) / playbackSettingsRef.current.rate,
+            ((playback.text.length - startAt) * 55) /
+              playbackSettingsRef.current.rate,
           );
           const progress = Math.min(elapsedMs / durationMs, 0.98);
           const estimatedIndex =
@@ -203,7 +286,134 @@ export function useSpeechEngine(): SpeechEngine {
         }, 80);
       }, 450);
     },
-    [clearFallback, stop],
+    [cleanupAudio, clearFallback, stop, updateStatus],
+  );
+
+  const generateKokoroAudio = useCallback(
+    (text: string, voice: string, speed: SpeechRate): Promise<Blob> => {
+      const worker = workerRef.current;
+      if (!worker) return Promise.reject(new Error("Kokoro worker is unavailable."));
+      const requestId = String(++requestIdRef.current);
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          const pending = pendingRequestsRef.current.get(requestId);
+          if (!pending) return;
+          pendingRequestsRef.current.delete(requestId);
+          pending.reject(new Error("Kokoro audio generation timed out."));
+          failWorker("Kokoro audio generation timed out.");
+        }, 45_000);
+        pendingRequestsRef.current.set(requestId, { resolve, reject, timeout });
+        try {
+          worker.postMessage({ type: "generate", requestId, text, voice, speed });
+        } catch (error) {
+          failWorker(
+            error instanceof Error ? error.message : "Kokoro worker failed.",
+          );
+        }
+      });
+    },
+    [failWorker],
+  );
+
+  const startKokoroPlayback = useCallback(
+    async (playback: Playback, startAt: number, generation: number) => {
+      const settings = playbackSettingsRef.current;
+      const voice = KOKORO_VOICES.some(
+        (candidate) => candidate.id === settings.selectedVoiceURI,
+      )
+        ? settings.selectedVoiceURI
+        : defaultKokoroVoice(settings.accent);
+      const text = playback.text.slice(startAt);
+      const cacheKey = `${voice}|${settings.rate}|${text}`;
+      let objectUrl = audioCacheRef.current.get(cacheKey);
+
+      try {
+        if (!objectUrl) {
+          const blob = await generateKokoroAudio(text, voice, settings.rate);
+          if (generationRef.current !== generation) return;
+          objectUrl = URL.createObjectURL(blob);
+          audioCacheRef.current.set(cacheKey, objectUrl);
+          if (audioCacheRef.current.size > 100) {
+            const oldestKey = audioCacheRef.current.keys().next().value;
+            if (oldestKey) {
+              const oldestUrl = audioCacheRef.current.get(oldestKey);
+              if (oldestUrl) URL.revokeObjectURL(oldestUrl);
+              audioCacheRef.current.delete(oldestKey);
+            }
+          }
+        }
+        if (generationRef.current !== generation) return;
+
+        cleanupAudio();
+        const audio = new Audio(objectUrl);
+        audio.playbackRate = 1;
+        audioElementRef.current = audio;
+        audio.ontimeupdate = () => {
+          if (generationRef.current !== generation) return;
+          if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+          const progress = Math.min(audio.currentTime / audio.duration, 1);
+          const charIndex =
+            playback.offset +
+            startAt +
+            Math.min(
+              Math.floor((playback.text.length - startAt) * progress),
+              playback.text.length - startAt - 1,
+            );
+          currentCharRef.current = charIndex;
+          setActiveCharIndex(charIndex);
+        };
+        audio.onended = () => {
+          if (generationRef.current !== generation) return;
+          cleanupAudio();
+          playbackRef.current = null;
+          updateStatus("idle");
+          setActiveSourceId(null);
+          setActiveCharIndex(null);
+        };
+        audio.onerror = () => {
+          if (generationRef.current !== generation) return;
+          startBrowserPlayback(playback, startAt, generation);
+        };
+        if (pausedRef.current) {
+          updateStatus("paused");
+          return;
+        }
+        await audio.play();
+        if (generationRef.current === generation) updateStatus("playing");
+      } catch {
+        if (generationRef.current === generation) {
+          startBrowserPlayback(playback, startAt, generation);
+        }
+      }
+    },
+    [cleanupAudio, generateKokoroAudio, startBrowserPlayback, updateStatus],
+  );
+
+  const startPlayback = useCallback(
+    (playback: Playback, startAt: number) => {
+      if (startAt >= playback.text.length) {
+        stop();
+        return;
+      }
+      generationRef.current += 1;
+      const generation = generationRef.current;
+      playbackRef.current = playback;
+      pausedRef.current = false;
+      currentCharRef.current = playback.offset + startAt;
+      setActiveSourceId(playback.sourceId);
+      setActiveCharIndex(playback.offset + startAt);
+      updateStatus("playing");
+
+      if (
+        engineModeRef.current === "kokoro" &&
+        kokoroStatusRef.current === "ready"
+      ) {
+        void startKokoroPlayback(playback, startAt, generation);
+      } else {
+        startBrowserPlayback(playback, startAt, generation);
+      }
+    },
+    [startBrowserPlayback, startKokoroPlayback, stop, updateStatus],
   );
 
   const speak = useCallback(
@@ -223,26 +433,125 @@ export function useSpeechEngine(): SpeechEngine {
     [startPlayback],
   );
 
+  const initKokoroModel = useCallback(() => {
+    if (kokoroStatusRef.current === "ready" || kokoroStatusRef.current === "loading") {
+      return;
+    }
+    updateKokoroStatus("loading");
+    setKokoroProgress(0);
+
+    try {
+      const worker = new Worker(
+        new URL("../workers/kokoro-tts.worker.ts", import.meta.url),
+        { type: "module" },
+      );
+      workerRef.current = worker;
+      worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+        const message = event.data;
+        if (message.type === "progress") {
+          setKokoroProgress(Math.min(99, Math.max(0, message.progress)));
+        } else if (message.type === "ready") {
+          setKokoroProgress(100);
+          updateKokoroStatus("ready");
+        } else if (message.type === "audio") {
+          const pending = pendingRequestsRef.current.get(message.requestId);
+          if (pending) {
+            clearTimeout(pending.timeout);
+            pending.resolve(message.blob);
+          }
+          pendingRequestsRef.current.delete(message.requestId);
+        } else {
+          failWorker(message.message);
+        }
+      };
+      worker.onerror = (event) => {
+        event.preventDefault();
+        failWorker(event.message || "Kokoro worker failed.");
+      };
+      worker.postMessage({ type: "load" });
+    } catch (error) {
+      failWorker(
+        error instanceof Error ? error.message : "Kokoro worker failed to start.",
+      );
+    }
+  }, [failWorker, updateKokoroStatus]);
+
+  const setEngineMode = useCallback(
+    (nextMode: SpeechEngineMode) => {
+      engineModeRef.current = nextMode;
+      setEngineModeState(nextMode);
+      writePreference(engineKey, nextMode);
+      if (nextMode === "kokoro") {
+        if (
+          !KOKORO_VOICES.some(
+            (candidate) => candidate.id === playbackSettingsRef.current.selectedVoiceURI,
+          )
+        ) {
+          const voice = defaultKokoroVoice(playbackSettingsRef.current.accent);
+          playbackSettingsRef.current.selectedVoiceURI = voice;
+          setSelectedVoiceURIState(voice);
+          writePreference(voiceKey, voice);
+        }
+        initKokoroModel();
+      }
+      const playback = playbackRef.current;
+      if (playback && statusRef.current !== "idle") {
+        startPlayback(
+          playback,
+          Math.max(0, currentCharRef.current - playback.offset),
+        );
+      }
+    },
+    [initKokoroModel, startPlayback],
+  );
+
   const pause = useCallback(() => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    pausedRef.current = true;
     clearFallback();
-    window.speechSynthesis.pause();
-    setStatus("paused");
-  }, [clearFallback]);
+    if (audioElementRef.current) audioElementRef.current.pause();
+    else if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.pause();
+    }
+    updateStatus("paused");
+  }, [clearFallback, updateStatus]);
 
   const resume = useCallback(() => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const audio = audioElementRef.current;
+    if (audio) {
+      pausedRef.current = false;
+      void audio.play().then(
+        () => updateStatus("playing"),
+        () => {
+          const playback = playbackRef.current;
+          if (playback) {
+            startBrowserPlayback(
+              playback,
+              Math.max(0, currentCharRef.current - playback.offset),
+              generationRef.current,
+            );
+          }
+        },
+      );
+      return;
+    }
+
     const playback = playbackRef.current;
     if (playback) {
-      startPlayback(
-        playback,
-        Math.max(0, currentCharRef.current - playback.offset),
-      );
-    } else {
-      window.speechSynthesis.resume();
-      setStatus("playing");
+      pausedRef.current = false;
+      if (
+        engineModeRef.current === "kokoro" &&
+        kokoroStatusRef.current === "ready"
+      ) {
+        startPlayback(
+          playback,
+          Math.max(0, currentCharRef.current - playback.offset),
+        );
+      } else if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.resume();
+        updateStatus("playing");
+      }
     }
-  }, [startPlayback]);
+  }, [startBrowserPlayback, startPlayback, updateStatus]);
 
   const setRate = useCallback(
     (nextRate: SpeechRate) => {
@@ -250,34 +559,35 @@ export function useSpeechEngine(): SpeechEngine {
       setRateState(nextRate);
       writePreference(rateKey, String(nextRate));
       const playback = playbackRef.current;
-      if (playback && status !== "idle") {
+      if (playback && statusRef.current !== "idle") {
         startPlayback(
           playback,
           Math.max(0, currentCharRef.current - playback.offset),
-          nextRate,
         );
       }
     },
-    [startPlayback, status],
+    [startPlayback],
   );
 
   const setAccent = useCallback(
     (nextAccent: EnglishAccent) => {
       playbackSettingsRef.current.accent = nextAccent;
-      playbackSettingsRef.current.selectedVoiceURI = "";
+      const defaultVoice = defaultKokoroVoice(nextAccent);
+      playbackSettingsRef.current.selectedVoiceURI =
+        engineModeRef.current === "kokoro" ? defaultVoice : "";
       setAccentState(nextAccent);
-      setSelectedVoiceURIState("");
+      setSelectedVoiceURIState(playbackSettingsRef.current.selectedVoiceURI);
       writePreference(accentKey, nextAccent);
-      writePreference(voiceKey, "");
+      writePreference(voiceKey, playbackSettingsRef.current.selectedVoiceURI);
       const playback = playbackRef.current;
-      if (playback && status !== "idle") {
+      if (playback && statusRef.current !== "idle") {
         startPlayback(
           playback,
           Math.max(0, currentCharRef.current - playback.offset),
         );
       }
     },
-    [startPlayback, status],
+    [startPlayback],
   );
 
   const setSelectedVoiceURI = useCallback(
@@ -286,30 +596,36 @@ export function useSpeechEngine(): SpeechEngine {
       setSelectedVoiceURIState(uri);
       writePreference(voiceKey, uri);
       const playback = playbackRef.current;
-      if (playback && status !== "idle") {
+      if (playback && statusRef.current !== "idle") {
         startPlayback(
           playback,
           Math.max(0, currentCharRef.current - playback.offset),
         );
       }
     },
-    [startPlayback, status],
+    [startPlayback],
   );
 
   useEffect(() => {
     const savedRate = readPreference(rateKey);
     const savedAccent = readPreference(accentKey);
     const savedVoice = readPreference(voiceKey) ?? "";
-    const nextRate = isSpeechRate(savedRate) ? Number(savedRate) as SpeechRate : 1;
+    const savedMode = readPreference(engineKey);
+    const nextRate = isSpeechRate(savedRate)
+      ? (Number(savedRate) as SpeechRate)
+      : 1;
     const nextAccent = isEnglishAccent(savedAccent) ? savedAccent : "en-US";
+    const nextMode = isEngineMode(savedMode) ? savedMode : "browser";
     playbackSettingsRef.current = {
       rate: nextRate,
       accent: nextAccent,
       selectedVoiceURI: savedVoice,
     };
+    engineModeRef.current = nextMode;
     setRateState(nextRate);
     setAccentState(nextAccent);
     setSelectedVoiceURIState(savedVoice);
+    setEngineModeState(nextMode);
 
     const refreshVoices = () => {
       setAvailableVoices(getRankedEnglishVoices(playbackSettingsRef.current.accent));
@@ -318,21 +634,35 @@ export function useSpeechEngine(): SpeechEngine {
     window.speechSynthesis?.addEventListener("voiceschanged", refreshVoices);
     const delayedRefresh = setTimeout(refreshVoices, 250);
     setMounted(true);
+    if (nextMode === "kokoro") initKokoroModel();
 
     return () => {
       clearTimeout(delayedRefresh);
       window.speechSynthesis?.removeEventListener("voiceschanged", refreshVoices);
     };
-  }, []);
+  }, [initKokoroModel]);
 
   useEffect(
     () => () => {
       clearFallback();
+      cleanupAudio();
+      workerRef.current?.terminate();
+      workerRef.current = null;
+      kokoroStatusRef.current = "unloaded";
+      for (const objectUrl of audioCacheRef.current.values()) {
+        URL.revokeObjectURL(objectUrl);
+      }
+      audioCacheRef.current.clear();
+      for (const pending of pendingRequestsRef.current.values()) {
+        clearTimeout(pending.timeout);
+        pending.reject(new Error("Speech engine unmounted."));
+      }
+      pendingRequestsRef.current.clear();
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
     },
-    [clearFallback],
+    [cleanupAudio, clearFallback],
   );
 
   useEffect(() => {
@@ -348,6 +678,11 @@ export function useSpeechEngine(): SpeechEngine {
     accent,
     selectedVoiceURI,
     availableVoices,
+    engineMode,
+    kokoroStatus,
+    kokoroProgress,
+    initKokoroModel,
+    setEngineMode,
     speak,
     pause,
     resume,
