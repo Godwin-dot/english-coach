@@ -36,7 +36,7 @@ export function DashboardWorkspace({
   const { deckBreakdown, recentAverageScore } = stats;
   const deckSegments = [
     { key: "fresh", label: "Nouvelles", value: deckBreakdown.fresh, color: "bg-zinc-500" },
-    { key: "learning", label: "En acquisition", value: deckBreakdown.learning, color: "bg-amber-300" },
+    { key: "learning", label: "En cours", value: deckBreakdown.learning, color: "bg-amber-300" },
     { key: "mastered", label: "Maîtrisées", value: deckBreakdown.mastered, color: "bg-emerald-300" },
   ];
   const scoreDeltaLabel =
@@ -49,7 +49,7 @@ export function DashboardWorkspace({
           ).toLocaleString("fr-FR", {
             minimumFractionDigits: 1,
             maximumFractionDigits: 1,
-          })} point${Math.abs(recentAverageScore.delta) >= 2 ? "s" : ""}`;
+          })} point${Math.abs(recentAverageScore.delta) === 1 ? "" : "s"}`;
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-7 sm:pt-9">

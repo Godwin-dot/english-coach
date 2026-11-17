@@ -33,8 +33,11 @@ export async function POST(request: NextRequest) {
   }
 
   if (parsed.data.action === "record") {
-    recordDictationResult(parsed.data);
-    return NextResponse.json({ ok: true }, { status: 201 });
+    const recentMistakes = recordDictationResult(parsed.data);
+    return NextResponse.json(
+      { ok: true, recentMistakes },
+      { status: 201, headers: { "Cache-Control": "no-store" } },
+    );
   }
 
   try {

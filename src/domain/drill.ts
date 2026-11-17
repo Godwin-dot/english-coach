@@ -185,7 +185,7 @@ export function recordDictationResult({
   sentenceEn,
   userAttempt,
   accuracyPct,
-}: DictationRecordInput): void {
+}: DictationRecordInput): RecentMistakes {
   const now = new Date().toISOString();
   const score = Math.round((accuracyPct / 10) * 10) / 10;
 
@@ -219,6 +219,8 @@ export function recordDictationResult({
         .run();
     }
   });
+
+  return getRecentMistakes(8);
 }
 
 export async function evaluateAndSaveDrill(

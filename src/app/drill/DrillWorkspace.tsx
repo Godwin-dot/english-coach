@@ -392,6 +392,27 @@ export function DrillWorkspace({
       });
       const body: unknown = await response.json();
       if (!response.ok) throw new Error(getErrorMessage(body));
+      if (
+        typeof body === "object" &&
+        body !== null &&
+        "recentMistakes" in body &&
+        typeof body.recentMistakes === "object" &&
+        body.recentMistakes !== null &&
+        "mistakes" in body.recentMistakes &&
+        Array.isArray(body.recentMistakes.mistakes) &&
+        "categories" in body.recentMistakes &&
+        Array.isArray(body.recentMistakes.categories) &&
+        "totalCount" in body.recentMistakes &&
+        typeof body.recentMistakes.totalCount === "number"
+      ) {
+        setMistakeSummary({
+          mistakes: body.recentMistakes.mistakes as RecentMistake[],
+          categories: body.recentMistakes.categories as MistakeCategoryCount[],
+          totalCount: body.recentMistakes.totalCount,
+        });
+      } else {
+        throw new Error("La réponse du serveur est invalide.");
+      }
       setDictationResult(result);
     } catch (caught) {
       setError(
