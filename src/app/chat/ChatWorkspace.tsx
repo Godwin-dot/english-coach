@@ -390,6 +390,8 @@ export function ChatWorkspace({
         </span>
       </header>
 
+      <AudioPlayerBar compact engine={speechEngine} className="mb-5" />
+
       {!sessionId ? (
         <section className="rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7">
           <div className="max-w-2xl">

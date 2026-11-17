@@ -340,6 +340,8 @@ export function DrillWorkspace({
         </div>
       </header>
 
+      <AudioPlayerBar compact engine={speechEngine} className="mb-5" />
+
       <section
         aria-label="Configuration de l’exercice"
         className="mb-3 grid gap-3 rounded-3xl border border-white/[0.08] bg-[#111114] p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end sm:p-5"

@@ -564,20 +564,6 @@ export function ReviewWorkspace({
           >
             {loadingMore ? "Actualisation…" : "Actualiser la file"}
           </button>
-          <label className="flex min-h-11 items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 text-xs text-zinc-400">
-            Accent
-            <select
-              value={speechEngine.accent}
-              onChange={(event) =>
-                speechEngine.setAccent(event.target.value as "en-US" | "en-GB")
-              }
-              className="bg-transparent font-medium text-zinc-100 outline-none focus-visible:text-white"
-              aria-label="Choisir l’accent audio"
-            >
-              <option value="en-US">US</option>
-              <option value="en-GB">GB</option>
-            </select>
-          </label>
           <button
             type="button"
             onClick={() =>
@@ -589,6 +575,8 @@ export function ReviewWorkspace({
           </button>
         </div>
       </header>
+
+      <AudioPlayerBar compact engine={speechEngine} className="mb-5" />
 
       <section aria-label="Progression de la session" className="mb-5">
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-xs">

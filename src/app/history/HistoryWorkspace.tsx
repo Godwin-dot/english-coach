@@ -289,6 +289,8 @@ export function HistoryWorkspace({
           ))}
         </div>
       </header>
+      <AudioPlayerBar compact engine={speechEngine} className="mb-5" />
+
       {deleteError ? (
         <p role="alert" className="mb-3 rounded-xl border border-rose-300/20 bg-rose-300/[0.07] px-4 py-3 text-sm text-rose-100">
           {deleteError}

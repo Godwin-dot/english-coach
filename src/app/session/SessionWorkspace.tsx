@@ -552,6 +552,8 @@ export function SessionWorkspace({
         ) : null}
       </header>
 
+      <AudioPlayerBar compact engine={speechEngine} className="mb-5" />
+
       <section
         aria-label={`Étape ${Math.min(step, 3)} sur 3`}
         className="mb-5 rounded-2xl border border-white/[0.08] bg-[#111114] p-4 sm:p-5"
