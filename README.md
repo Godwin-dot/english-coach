@@ -31,13 +31,23 @@ Prérequis : Node.js 22 LTS et pnpm.
 ```bash
 git clone https://github.com/<votre-compte>/english-coach.git && cd english-coach
 pnpm install
-pnpm exec drizzle-kit migrate && pnpm db:seed
+pnpm db:seed
 pnpm dev
 ```
 
 Ouvrez <http://localhost:3000>, puis configurez une clé Gemini ou OpenRouter depuis **Configuration IA**. L’accès sans mot de passe est prévu pour le développement local. Avant toute exposition sur Internet, définissez `APP_PASSWORD` et un `AUTH_SECRET` aléatoire d’au moins 32 octets dans `.env.local`.
 
 Pour un déploiement public derrière Caddy, consultez le [guide VPS](DEPLOYMENT.md).
+
+## Mettre à jour l'application
+
+Après avoir récupéré les changements et installé les dépendances, les migrations Drizzle en attente s'appliquent automatiquement au démarrage de `pnpm dev`. Les données existantes de `data/english.db` sont conservées. Si nécessaire, vous pouvez appliquer les migrations manuellement avec `pnpm exec drizzle-kit migrate`.
+
+```bash
+git pull origin main
+pnpm install
+pnpm dev
+```
 
 ## Sécurité et données
 
