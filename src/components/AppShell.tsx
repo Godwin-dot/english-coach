@@ -10,6 +10,7 @@ const navigation = [
   { href: "/", label: "Tableau de bord", mobileLabel: "Aujourd'hui", icon: "grid" },
   { href: "/lesson", label: "Micro-leçon", mobileLabel: "Leçon", icon: "book" },
   { href: "/drill", label: "Traduction active", mobileLabel: "Traduction", icon: "translate" },
+  { href: "/speak", label: "Prononciation", mobileLabel: "Prononc.", icon: "mic" },
   { href: "/chat", label: "Conversation", mobileLabel: "Chat", icon: "chat" },
   { href: "/review", label: "Révision FSRS", mobileLabel: "Révision", icon: "repeat" },
   { href: "/history", label: "Historique", mobileLabel: "Historique", icon: "history" },
@@ -56,6 +57,12 @@ function NavigationIcon({ name }: { name: (typeof navigation)[number]["icon"] })
         <path d="M7.5 12h.01M11 12h.01M14.5 12h.01" />
       </>
     ),
+    mic: (
+      <>
+        <rect x="9" y="3" width="6" height="12" rx="3" />
+        <path d="M5 11a7 7 0 0 0 14 0M12 18v3m-4 0h8" />
+      </>
+    ),
   };
 
   return (
@@ -87,7 +94,14 @@ export function AppShell({
   dueCount?: number;
   hasProviderKey: boolean;
   passwordAuthEnabled: boolean;
-  activeNav?: "home" | "lesson" | "drill" | "chat" | "review" | "history";
+  activeNav?:
+    | "home"
+    | "lesson"
+    | "drill"
+    | "speak"
+    | "chat"
+    | "review"
+    | "history";
 }) {
   const pathname = usePathname();
   const [configured, setConfigured] = useState(hasProviderKey);
@@ -150,6 +164,8 @@ export function AppShell({
                       ? "/lesson"
                       : activeNav === "drill"
                         ? "/drill"
+                        : activeNav === "speak"
+                          ? "/speak"
                         : activeNav === "chat"
                           ? "/chat"
                           : activeNav === "review"
@@ -267,7 +283,7 @@ export function AppShell({
 
       <nav
         aria-label="Navigation mobile"
-        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-white/[0.08] bg-zinc-950/90 px-1 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-xl lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-7 border-t border-white/[0.08] bg-zinc-950/90 px-1 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-xl lg:hidden"
       >
         {navigation.map((item) => {
           const active =
@@ -279,6 +295,8 @@ export function AppShell({
                     ? "/lesson"
                     : activeNav === "drill"
                       ? "/drill"
+                      : activeNav === "speak"
+                        ? "/speak"
                       : activeNav === "chat"
                         ? "/chat"
                         : activeNav === "review"
@@ -292,13 +310,14 @@ export function AppShell({
             <Link
               key={item.href}
               href={item.href}
+              aria-label={item.label}
               aria-current={active ? "page" : undefined}
-              className={`relative flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-medium transition-colors duration-150 ${
+              className={`relative flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-medium transition-colors duration-150 ${
                 active ? "text-white" : "text-zinc-500 hover:text-zinc-200"
               }`}
             >
               <NavigationIcon name={item.icon} />
-              {item.mobileLabel}
+              <span className="max-w-full truncate">{item.mobileLabel}</span>
               {item.href === "/review" && dueCount > 0 ? (
                 <span className="absolute right-1/4 top-0 min-w-5 rounded-full bg-white/[0.1] px-1.5 py-0.5 text-[9px] tabular-nums text-white">
                   {dueCount}
