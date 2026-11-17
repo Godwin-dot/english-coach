@@ -221,7 +221,7 @@ export function getDashboardStats(
     .from(activityLog)
     .where(
       and(
-        inArray(activityLog.kind, ["drill", "mistake_quiz"]),
+        inArray(activityLog.kind, ["drill", "drill_eval", "mistake_quiz"]),
         isNotNull(activityLog.score),
       ),
     )

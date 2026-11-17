@@ -1,5 +1,35 @@
 import type { CEFRLevel } from "@/schemas/lesson";
 
+export function buildGenerateDictationPrompt({
+  cefrLevel,
+  topic,
+}: {
+  cefrLevel: CEFRLevel;
+  topic?: string;
+}): { systemPrompt: string; userPrompt: string } {
+  return {
+    systemPrompt: [
+      "You create listening dictation exercises for French-speaking English learners.",
+      "Return only one valid JSON object matching the requested schema.",
+      "Write one natural spoken English sentence containing 8 to 18 words, suitable for the specified CEFR level.",
+      "Prefer connected speech, a common contraction, or a potentially confusing sound without making the sentence unnatural.",
+      "Provide a faithful, fluent French translation and a short useful phonetic note in French.",
+      topic
+        ? `Use this learner-selected theme: ${topic}.`
+        : "Choose a practical everyday or work-related theme.",
+    ].join(" "),
+    userPrompt: JSON.stringify({
+      cefrLevel,
+      topic: topic || null,
+      requiredShape: {
+        sentence_en: "Natural spoken English sentence of 8-18 words",
+        translation_fr: "Faithful and natural French translation",
+        focus_note_fr: "Short French note about a contraction or pronunciation point",
+      },
+    }),
+  };
+}
+
 export type RecentMistakePrompt = {
   category: string | null;
   userText: string;

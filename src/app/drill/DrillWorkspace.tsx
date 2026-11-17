@@ -9,10 +9,16 @@ import type {
   RecentMistake,
   RecentMistakes,
 } from "@/domain/drill";
-import type {
-  DrillEvaluationResult,
-  GeneratedDrillPrompt,
+import {
+  DictationExerciseSchema,
+  type DictationExercise,
+  type DrillEvaluationResult,
+  type GeneratedDrillPrompt,
 } from "@/schemas/drill";
+import {
+  evaluateDictation,
+  type DictationEvaluation,
+} from "@/lib/dictationDiff";
 import type { CEFRLevel } from "@/schemas/lesson";
 import { updateSessionStateField, useSessionState } from "@/hooks/useSessionState";
 import { useHotkeys } from "@/hooks/useHotkeys";
@@ -31,7 +37,11 @@ type DrillEvaluation = DrillEvaluationResult & {
 };
 
 type DrillSessionState = {
+  mode: "translation" | "dictation";
   exercise: DrillExercise | null;
+  dictationExercise: DictationExercise | null;
+  dictationAttempt: string;
+  dictationResult: DictationEvaluation | null;
   selectedLevel: CEFRLevel;
   topic: string;
   translation: string;
@@ -126,14 +136,28 @@ export function DrillWorkspace({
   const [session, setSession, isHydrated] = useSessionState<DrillSessionState>(
     "english-coach:drill:v1",
     {
+      mode: "translation",
       exercise: null,
+      dictationExercise: null,
+      dictationAttempt: "",
+      dictationResult: null,
       selectedLevel: cefrLevel,
       topic: "",
       translation: "",
       evaluation: null,
     },
   );
-  const { exercise, selectedLevel, topic, translation, evaluation } = session;
+  const {
+    exercise,
+    selectedLevel,
+    topic,
+    translation,
+    evaluation,
+    dictationExercise,
+    dictationAttempt = "",
+    dictationResult = null,
+  } = session;
+  const mode = session.mode;
   const setExercise: Dispatch<SetStateAction<DrillExercise | null>> = useCallback(
     (update) => updateSessionStateField(setSession, "exercise", update),
     [setSession],
@@ -152,6 +176,27 @@ export function DrillWorkspace({
   );
   const setEvaluation: Dispatch<SetStateAction<DrillEvaluation | null>> = useCallback(
     (update) => updateSessionStateField(setSession, "evaluation", update),
+    [setSession],
+  );
+  const setMode = useCallback(
+    (update: SetStateAction<"translation" | "dictation">) =>
+      updateSessionStateField(setSession, "mode", update),
+    [setSession],
+  );
+  const setDictationExercise: Dispatch<SetStateAction<DictationExercise | null>> =
+    useCallback(
+      (update) => updateSessionStateField(setSession, "dictationExercise", update),
+      [setSession],
+    );
+  const setDictationAttempt = useCallback(
+    (update: SetStateAction<string>) =>
+      updateSessionStateField(setSession, "dictationAttempt", update),
+    [setSession],
+  );
+  const setDictationResult: Dispatch<
+    SetStateAction<DictationEvaluation | null>
+  > = useCallback(
+    (update) => updateSessionStateField(setSession, "dictationResult", update),
     [setSession],
   );
   const [mistakeSummary, setMistakeSummary] = useState(initialMistakes);
@@ -209,13 +254,61 @@ export function DrillWorkspace({
     }
   }, [selectedLevel, topic]);
 
+  const loadDictationExercise = useCallback(async () => {
+    setBusy("generate");
+    setError("");
+    setDictationResult(null);
+    setDictationAttempt("");
+    setShowHint(false);
+    try {
+      const response = await fetch("/api/drill/dictation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "generate",
+          topic: topic.trim() || undefined,
+          cefrLevel: selectedLevel,
+        }),
+      });
+      const body: unknown = await response.json();
+      if (!response.ok) throw new Error(getErrorMessage(body));
+      if (
+        typeof body !== "object" ||
+        body === null ||
+        !("exercise" in body)
+      ) {
+        throw new Error("La réponse du serveur est invalide.");
+      }
+      const parsedExercise = DictationExerciseSchema.safeParse(body.exercise);
+      if (!parsedExercise.success) {
+        throw new Error("La réponse du serveur est invalide.");
+      }
+      setDictationExercise(parsedExercise.data);
+      startedAt.current = Date.now();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Impossible de préparer une dictée.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }, [selectedLevel, topic, setDictationAttempt, setDictationExercise, setDictationResult]);
+
   useEffect(() => {
-    if (isHydrated && !exercise) {
+    if (isHydrated && mode === "translation" && !exercise) {
       void loadExercise(retrySentence);
     }
     // Load once from the URL; later settings changes only affect the next request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exercise, isHydrated, retrySentence]);
+  }, [exercise, isHydrated, retrySentence, mode]);
+
+  useEffect(() => {
+    if (isHydrated && mode === "dictation" && !dictationExercise) {
+      void loadDictationExercise();
+    }
+  }, [dictationExercise, isHydrated, loadDictationExercise, mode]);
 
   useEffect(() => {
     if (isHydrated) startedAt.current = Date.now();
@@ -278,6 +371,39 @@ export function DrillWorkspace({
     }
   }
 
+  async function submitDictation() {
+    if (!dictationExercise || !dictationAttempt.trim() || busy !== null) return;
+    setBusy("evaluate");
+    setError("");
+    try {
+      const result = evaluateDictation(
+        dictationExercise.sentence_en,
+        dictationAttempt,
+      );
+      const response = await fetch("/api/drill/dictation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "record",
+          sentenceEn: dictationExercise.sentence_en,
+          userAttempt: dictationAttempt,
+          accuracyPct: result.accuracyPct,
+        }),
+      });
+      const body: unknown = await response.json();
+      if (!response.ok) throw new Error(getErrorMessage(body));
+      setDictationResult(result);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Impossible d’enregistrer le résultat de la dictée.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function startDictation() {
     const speechWindow = window as SpeechWindow;
     const RecognitionConstructor =
@@ -327,10 +453,19 @@ export function DrillWorkspace({
       key: "Enter",
       ctrlOrMeta: true,
       allowInInputs: true,
-      enabled: exercise !== null && busy === null,
+      enabled:
+        busy === null &&
+        ((mode === "translation" && exercise !== null) ||
+          (mode === "dictation" && dictationExercise != null)),
       action: (event) => {
         event.preventDefault();
-        if (evaluation) {
+        if (mode === "dictation") {
+          if (dictationResult) {
+            void loadDictationExercise();
+          } else {
+            void submitDictation();
+          }
+        } else if (evaluation) {
           void loadExercise();
         } else {
           void submitTranslation();
@@ -340,13 +475,34 @@ export function DrillWorkspace({
     {
       key: "r",
       altKey: true,
-      enabled: evaluation !== null && busy === null,
+      allowInInputs: true,
+      enabled:
+        (mode === "dictation" && dictationExercise !== null) ||
+        (mode === "translation" && evaluation !== null && busy === null),
       action: (event) => {
         event.preventDefault();
-        if (evaluation) {
+        if (mode === "dictation" && dictationExercise) {
+          speechEngine.speak(
+            dictationExercise.sentence_en,
+            `dictation:${dictationExercise.id}`,
+          );
+        } else if (evaluation) {
           speechEngine.speak(
             evaluation.ideal_translation,
             `drill:${exercise?.french_sentence}:reference`,
+          );
+        }
+      },
+    },
+    {
+      key: "r",
+      enabled: mode === "dictation" && dictationExercise !== null,
+      action: (event) => {
+        event.preventDefault();
+        if (dictationExercise) {
+          speechEngine.speak(
+            dictationExercise.sentence_en,
+            `dictation:${dictationExercise.id}`,
           );
         }
       },
@@ -359,11 +515,14 @@ export function DrillWorkspace({
         <div>
           <p className="text-sm text-zinc-400">Pratiquez la production active</p>
           <h1 className="mt-1 font-serif text-3xl tracking-[-0.04em] text-white sm:text-4xl">
-            Traduction française → anglaise
+            {mode === "dictation"
+              ? "Dictée audio anglaise"
+              : "Traduction française → anglaise"}
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-            Une phrase à la fois, à votre niveau. Vos mots appris et vos
-            erreurs récentes orientent les exercices.
+            {mode === "dictation"
+              ? "Écoutez une phrase anglaise adaptée à votre niveau, puis transcrivez-la sans la voir."
+              : "Une phrase à la fois, à votre niveau. Vos mots appris et vos erreurs récentes orientent les exercices."}
           </p>
         </div>
         <div className="rounded-full border border-white/[0.08] bg-white/[0.035] px-3.5 py-2 text-xs text-zinc-300">
@@ -371,6 +530,33 @@ export function DrillWorkspace({
           {mistakeSummary.totalCount === 1 ? "" : "s"} de vigilance
         </div>
       </header>
+
+      <div
+        role="group"
+        aria-label="Mode d’entraînement"
+        className="mb-5 inline-flex max-w-full flex-wrap gap-1 rounded-full border border-white/[0.08] bg-[#111114] p-1"
+      >
+        {(
+          [
+            ["translation", "Traduction FR → EN"],
+            ["dictation", "Dictée audio EN"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={mode === value}
+            onClick={() => setMode(value)}
+            className={`min-h-11 rounded-full px-4 text-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-200 ${
+              mode === value
+                ? "bg-white text-zinc-950"
+                : "text-zinc-300 hover:bg-white/[0.06]"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       <AudioPlayerBar compact engine={speechEngine} className="mb-5" />
 
@@ -427,17 +613,223 @@ export function DrillWorkspace({
         </div>
         <button
           type="button"
-          onClick={() => void loadExercise()}
+          onClick={() =>
+            mode === "dictation"
+              ? void loadDictationExercise()
+              : void loadExercise()
+          }
           disabled={busy !== null}
           className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 active:scale-[0.98] disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
-          {busy === "generate" ? "Génération…" : "Générer une phrase"}
+          {busy === "generate"
+            ? "Génération…"
+            : mode === "dictation"
+              ? "Nouvelle dictée"
+              : "Générer une phrase"}
         </button>
       </section>
 
       <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1.55fr)_minmax(280px,0.75fr)]">
         <section className="min-w-0 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-7">
-          {busy === "generate" && !exercise ? (
+          {mode === "dictation" ? (
+            dictationExercise ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="rounded-full border border-amber-300/[0.14] bg-amber-300/[0.07] px-3 py-1.5 text-xs font-medium text-amber-100">
+                    Dictée · {dictationExercise.cefr_level}
+                  </span>
+                  {dictationExercise.topic ? (
+                    <span className="max-w-full break-words text-xs text-zinc-500">
+                      {dictationExercise.topic}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="mt-6 rounded-3xl border border-white/[0.07] bg-black/20 p-5 text-center sm:p-8">
+                  <p className="text-sm text-zinc-400">
+                    Écoutez la phrase, puis écrivez ce que vous entendez.
+                  </p>
+                  <div className="mt-5 flex flex-wrap justify-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        speechEngine.setRate(1);
+                        speechEngine.speak(
+                          dictationExercise.sentence_en,
+                          `dictation:${dictationExercise.id}`,
+                        );
+                      }}
+                      className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                    >
+                      Écouter la phrase <span className="ml-2 text-xs text-zinc-600">1x</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        speechEngine.setRate(0.75);
+                        speechEngine.speak(
+                          dictationExercise.sentence_en,
+                          `dictation:${dictationExercise.id}`,
+                        );
+                      }}
+                      className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.035] px-4 text-sm text-zinc-200 transition hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-200"
+                    >
+                      Écouter au ralenti (0.75x)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowHint((visible) => !visible)}
+                      aria-expanded={showHint}
+                      className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/[0.08] px-4 text-sm text-zinc-300 transition hover:bg-white/[0.05] focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200"
+                    >
+                      {showHint ? "Masquer l’indice" : "Indice"}
+                    </button>
+                  </div>
+                  <p className="mt-3 text-xs text-zinc-500">
+                    R ou Alt + R pour réécouter
+                  </p>
+                  {showHint ? (
+                    <div className="mt-4 rounded-2xl border border-amber-200/[0.12] bg-amber-200/[0.04] px-4 py-3 text-left">
+                      <p className="text-sm text-amber-100">
+                        <span className="tabular-nums">
+                          {dictationExercise.sentence_en.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)?.length ?? 0}
+                        </span>{" "}
+                        mots
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-zinc-300">
+                        {dictationExercise.translation_fr}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+
+                {dictationResult ? (
+                  <section
+                    aria-live="polite"
+                    className="mt-5 animate-fade-in-up rounded-2xl border border-white/[0.08] bg-black/15 p-4 sm:p-5"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h2 className="text-base font-medium text-white">Précision</h2>
+                      <span className="rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-3 py-1.5 text-lg font-semibold tabular-nums text-emerald-100">
+                        {dictationResult.accuracyPct.toLocaleString("fr-FR", {
+                          maximumFractionDigits: 1,
+                        })}%
+                      </span>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-x-1.5 gap-y-2 text-sm leading-7">
+                      {dictationResult.tokens.map((token, index) => {
+                        if (token.type === "correct") {
+                          return (
+                            <span
+                              key={`${token.expected}-${index}`}
+                              className="rounded-md bg-emerald-500/10 px-1 text-emerald-300"
+                            >
+                              {token.expected}
+                            </span>
+                          );
+                        }
+                        if (token.type === "substitution") {
+                          return (
+                            <span
+                              key={`${token.actual}-${index}`}
+                              className="rounded-md bg-amber-500/10 px-1 text-amber-200"
+                            >
+                              [{token.actual} → {token.expected}]
+                            </span>
+                          );
+                        }
+                        return (
+                          <span
+                            key={`${token.type}-${token.expected ?? token.actual}-${index}`}
+                            className="rounded-md bg-rose-500/10 px-1 text-rose-200"
+                          >
+                            [{token.type === "missing" ? `manquant : ${token.expected}` : `en trop : ${token.actual}`}]
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-5 font-serif text-lg leading-7 text-white">
+                      {dictationExercise.sentence_en}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-zinc-300">
+                      {dictationExercise.translation_fr}
+                    </p>
+                    {dictationExercise.focus_note_fr ? (
+                      <p className="mt-4 rounded-xl border border-violet-200/[0.1] bg-violet-200/[0.04] px-3.5 py-3 text-sm leading-6 text-violet-100">
+                        {dictationExercise.focus_note_fr}
+                      </p>
+                    ) : null}
+                    <AudioPlayerBar
+                      className="mt-4 max-w-full"
+                      mode="compact"
+                      engine={speechEngine}
+                      text={dictationExercise.sentence_en}
+                      sourceId={`dictation:${dictationExercise.id}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void loadDictationExercise()}
+                      disabled={busy !== null}
+                      className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                    >
+                      Phrase suivante <span aria-hidden="true" className="ml-2">→</span>
+                      <span className="hidden text-xs font-normal text-zinc-600 sm:inline">(Ctrl + Entrée)</span>
+                    </button>
+                  </section>
+                ) : (
+                  <>
+                    <label
+                      htmlFor="dictation-attempt"
+                      className="mt-5 block text-sm font-medium text-zinc-300"
+                    >
+                      Votre transcription en anglais
+                    </label>
+                    <textarea
+                      id="dictation-attempt"
+                      value={dictationAttempt}
+                      onChange={(event) => setDictationAttempt(event.target.value)}
+                      disabled={busy !== null}
+                      maxLength={1000}
+                      rows={4}
+                      placeholder="Écrivez la phrase entendue…"
+                      className="mt-2 min-h-32 w-full resize-y rounded-2xl border border-white/[0.1] bg-black/25 px-4 py-3.5 text-base leading-7 text-zinc-100 outline-none transition focus:border-violet-200/40 focus:ring-2 focus:ring-violet-200/10 disabled:opacity-70"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void submitDictation()}
+                      disabled={!dictationAttempt.trim() || busy !== null}
+                      className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                    >
+                      {busy === "evaluate" ? "Vérification…" : "Vérifier la dictée"}
+                      <span className="hidden text-xs font-normal text-zinc-600 sm:inline">(Ctrl + Entrée)</span>
+                    </button>
+                  </>
+                )}
+              </>
+            ) : busy === "generate" ? (
+              <div className="space-y-5" aria-label="Préparation de la dictée">
+                <div className="skeleton-shimmer h-4 w-32 rounded-full" />
+                <div className="skeleton-shimmer h-28 rounded-2xl" />
+                <div className="skeleton-shimmer h-11 w-52 rounded-full" />
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-white/[0.07] bg-black/15 p-5 sm:p-6">
+                <p className="text-sm leading-6 text-zinc-300">
+                  {hasProviderKey
+                    ? "La dictée n’a pas pu être préparée."
+                    : "Ajoutez une clé Gemini ou OpenRouter depuis Configuration IA pour générer une dictée."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void loadDictationExercise()}
+                  disabled={busy !== null}
+                  className="mt-4 inline-flex min-h-11 items-center rounded-full bg-white px-4 text-sm font-medium text-zinc-950 disabled:opacity-50"
+                >
+                  Réessayer
+                </button>
+              </div>
+            )
+          ) : (busy === "generate" && !exercise ? (
             <div className="space-y-5" aria-label="Préparation de l'exercice">
               <div className="skeleton-shimmer h-4 w-32 rounded-full" />
               <div className="skeleton-shimmer h-24 rounded-2xl" />
@@ -580,7 +972,7 @@ export function DrillWorkspace({
                 Réessayer
               </button>
             </div>
-          )}
+          ))}
 
           {error ? (
             <p
@@ -593,7 +985,7 @@ export function DrillWorkspace({
         </section>
 
         <aside className="min-w-0 space-y-3">
-          {evaluation ? (
+          {mode === "translation" && evaluation ? (
             <section
               aria-live="polite"
               className="animate-fade-in-up min-w-0 rounded-3xl border border-white/[0.08] bg-[#111114] p-5 sm:p-6"

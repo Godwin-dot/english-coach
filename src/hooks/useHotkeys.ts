@@ -54,7 +54,8 @@ export function useHotkeys(bindings: HotkeyBinding[], enabled = true): void {
         if (!modifiersMatch) continue;
         if (
           editable &&
-          (!binding.allowInInputs || !(event.ctrlKey || event.metaKey))
+          (!binding.allowInInputs ||
+            !(event.ctrlKey || event.metaKey || event.altKey))
         ) {
           continue;
         }

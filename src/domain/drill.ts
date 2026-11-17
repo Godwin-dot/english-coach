@@ -12,14 +12,19 @@ import { addMissedVocabCards } from "@/domain/cards";
 import { getAppSettings } from "@/domain/settings";
 import { LLMProviderError } from "@/llm/errors";
 import {
+  GeneratedDictationContentSchema,
   DrillEvaluationResultSchema,
   GeneratedDrillPromptSchema,
+  type DictationExercise,
+  type DictationRecordInput,
   type DrillEvaluationResult,
   type GenerateDrillInput,
   type EvaluateDrillInput,
 } from "@/schemas/drill";
+import type { CEFRLevel } from "@/schemas/lesson";
 import { getLLMProvider } from "@/llm/provider";
 import {
+  buildGenerateDictationPrompt,
   buildEvaluateDrillPrompts,
   buildGenerateDrillPrompts,
 } from "@/llm/prompts/drill";
@@ -138,6 +143,82 @@ export async function generateDrillExercise(input: GenerateDrillInput = {}) {
   throw new LLMProviderError(
     "La phrase générée doit contenir entre 12 et 25 mots. Réessayez.",
   );
+}
+
+export async function generateDictationExercise({
+  cefrLevel: requestedLevel,
+  topic: requestedTopic,
+}: {
+  cefrLevel?: CEFRLevel;
+  topic?: string;
+}): Promise<DictationExercise> {
+  const appSettings = getAppSettings();
+  const cefrLevel = requestedLevel ?? appSettings.targetLevel;
+  const topic = requestedTopic?.trim() || null;
+  const prompts = buildGenerateDictationPrompt({
+    cefrLevel,
+    topic: topic ?? undefined,
+  });
+  const generated = await getLLMProvider().generateStructuredJSON(
+    prompts.systemPrompt,
+    prompts.userPrompt,
+    GeneratedDictationContentSchema,
+  );
+  const wordCount =
+    generated.sentence_en.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)
+      ?.length ?? 0;
+  if (wordCount < 8 || wordCount > 18) {
+    throw new LLMProviderError(
+      "La phrase de dictée doit contenir entre 8 et 18 mots. Réessayez.",
+    );
+  }
+
+  return {
+    id: crypto.randomUUID(),
+    ...generated,
+    cefr_level: cefrLevel,
+    topic,
+  };
+}
+
+export function recordDictationResult({
+  sentenceEn,
+  userAttempt,
+  accuracyPct,
+}: DictationRecordInput): void {
+  const now = new Date().toISOString();
+  const score = Math.round((accuracyPct / 10) * 10) / 10;
+
+  db.transaction((transaction) => {
+    transaction
+      .insert(activityLog)
+      .values({
+        kind: "drill_eval",
+        score,
+        durationS: 30,
+        metaJson: JSON.stringify({
+          mode: "dictation",
+          sentenceEn,
+          userAttempt,
+        }),
+        createdAt: now,
+      })
+      .run();
+
+    if (accuracyPct < 80) {
+      transaction
+        .insert(mistakes)
+        .values({
+          source: "drill",
+          userText: userAttempt,
+          correction: sentenceEn,
+          category: "Dictée",
+          explanation: `Précision de ${Math.round(accuracyPct)} % sur cette phrase.`,
+          createdAt: now,
+        })
+        .run();
+    }
+  });
 }
 
 export async function evaluateAndSaveDrill(

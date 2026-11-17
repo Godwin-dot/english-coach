@@ -43,9 +43,44 @@ export const DrillEvaluationResultSchema = z.object({
   missed_vocab: z.array(MissedVocabItemSchema).max(3),
 });
 
+export const DictationExerciseSchema = z.object({
+  id: z.string().uuid(),
+  sentence_en: z.string().trim().min(1).max(500),
+  translation_fr: z.string().trim().min(1).max(500),
+  focus_note_fr: z.string().trim().max(300),
+  cefr_level: CEFRLevelSchema,
+  topic: z.string().trim().max(120).nullable(),
+});
+
+export const GeneratedDictationContentSchema = z.object({
+  sentence_en: z.string().trim().min(1).max(500),
+  translation_fr: z.string().trim().min(1).max(500),
+  focus_note_fr: z.string().trim().max(300).default(""),
+});
+
+export const DictationGenerateInputSchema = z.object({
+  action: z.literal("generate"),
+  cefrLevel: CEFRLevelSchema.optional(),
+  topic: z.string().trim().max(120).optional(),
+});
+
+export const DictationRecordInputSchema = z.object({
+  action: z.literal("record"),
+  sentenceEn: z.string().trim().min(1).max(500),
+  userAttempt: z.string().trim().min(1).max(1000),
+  accuracyPct: z.number().finite().min(0).max(100),
+});
+
+export const DictationActionInputSchema = z.discriminatedUnion("action", [
+  DictationGenerateInputSchema,
+  DictationRecordInputSchema,
+]);
+
 export type GeneratedDrillPrompt = z.infer<typeof GeneratedDrillPromptSchema>;
 export type GenerateDrillInput = z.infer<typeof GenerateDrillInputSchema>;
 export type EvaluateDrillInput = z.infer<typeof EvaluateDrillInputSchema>;
 export type DrillEvaluationResult = z.infer<
   typeof DrillEvaluationResultSchema
 >;
+export type DictationExercise = z.infer<typeof DictationExerciseSchema>;
+export type DictationRecordInput = z.infer<typeof DictationRecordInputSchema>;
