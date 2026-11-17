@@ -10,7 +10,7 @@ import type {
   DrillEvaluationResult,
   GeneratedDrillPrompt,
 } from "@/schemas/drill";
-import type { CEFRLevel, KeywordItem } from "@/schemas/lesson";
+import type { CEFRLevel, LessonKeywordItem } from "@/schemas/lesson";
 import type { ReviewRating } from "@/srs";
 import { updateSessionStateField, useSessionState } from "@/hooks/useSessionState";
 import { useSpeechEngine } from "@/hooks/useSpeechEngine";
@@ -397,7 +397,7 @@ export function SessionWorkspace({
     }
   }
 
-  async function addKeyword(keyword: KeywordItem) {
+  async function addKeyword(keyword: LessonKeywordItem) {
     if (!lesson) return;
     setCardStatuses((current) => ({ ...current, [keyword.term]: "busy" }));
     setError("");
@@ -412,7 +412,8 @@ export function SessionWorkspace({
           translation: keyword.translation,
           phonetic: keyword.phonetic,
           example_sentence: keyword.example,
-          example_translation: keyword.example_fr,
+          example_translation: keyword.example_fr ?? keyword.translation,
+          mnemonic: keyword.mnemonic,
           source_lesson_id: lesson.id,
         }),
       });

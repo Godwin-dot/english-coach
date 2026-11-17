@@ -18,6 +18,7 @@ export const lessons = sqliteTable("lessons", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   language: text("language").notNull().default("en"),
   topic: text("topic").notNull(),
+  title: text("title"),
   cefrLevel: text("cefr_level").notNull(),
   contentEn: text("content_en").notNull(),
   contentFr: text("content_fr").notNull(),

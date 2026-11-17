@@ -14,7 +14,7 @@ import {
 import {
   CEFRLevelSchema,
   type CEFRLevel,
-  type KeywordItem,
+  type LessonKeywordItem,
 } from "@/schemas/lesson";
 import type { LessonView, RecentLesson } from "@/domain/lessons";
 
@@ -67,7 +67,7 @@ function WordCard({
   reviewStatus,
   isAddingToReview,
 }: {
-  word: KeywordItem | null;
+  word: LessonKeywordItem | null;
   engine: SpeechEngine;
   onAddToReview: () => void;
   reviewStatus: "added" | "already_exists" | "daily_cap_reached" | null;
@@ -94,9 +94,11 @@ function WordCard({
       <div className="mt-3 flex items-start justify-between gap-3">
         <div>
           <h3 className="font-serif text-2xl text-slate-50">{word.term}</h3>
-          <p className="mt-1 font-mono text-xs tracking-wide text-slate-400">
-            {word.phonetic}
-          </p>
+          {word.phonetic ? (
+            <p className="mt-1 font-mono text-xs tracking-wide text-slate-400">
+              {word.phonetic}
+            </p>
+          ) : null}
         </div>
         <button
           type="button"
@@ -126,9 +128,16 @@ function WordCard({
             ▶
           </button>
         </div>
-        <p className="mt-2 text-xs leading-5 text-slate-400">
-          {word.example_fr}
-        </p>
+        {word.example_fr ? (
+          <p className="mt-2 text-xs leading-5 text-slate-400">
+            {word.example_fr}
+          </p>
+        ) : null}
+        {word.mnemonic ? (
+          <p className="mt-2 text-xs leading-5 text-amber-200/80">
+            Astuce mémoire · {word.mnemonic}
+          </p>
+        ) : null}
       </div>
       <button
         type="button"
@@ -330,7 +339,7 @@ function RecentLessons({
                 }`}
               >
                 <span className="block truncate text-[13px] font-medium">
-                  {lesson.topic}
+                  {lesson.title ?? lesson.topic}
                 </span>
                 <span className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
                   <span>{lesson.cefrLevel}</span>
@@ -378,12 +387,19 @@ export function LessonWorkspace({
   const router = useRouter();
   const [lesson, setLesson] = useState(initialLesson);
   const [recent, setRecent] = useState(recentLessons);
+  const [lessonMode, setLessonMode] = useState<"generate" | "import">(
+    "generate",
+  );
   const [topic, setTopic] = useState(initialTopic);
+  const [importTitle, setImportTitle] = useState("");
+  const [importText, setImportText] = useState("");
   const [level, setLevel] = useState<CEFRLevel>(targetLevel);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isConfigured, setIsConfigured] = useState(hasProviderKey);
   const [translationVisible, setTranslationVisible] = useState(false);
-  const [selectedWord, setSelectedWord] = useState<KeywordItem | null>(null);
+  const [selectedWord, setSelectedWord] = useState<LessonKeywordItem | null>(
+    null,
+  );
   const [lookupWord, setLookupWord] = useState("");
   const [error, setError] = useState("");
   const [reviewStatus, setReviewStatus] = useState<
@@ -463,6 +479,55 @@ export function LessonWorkspace({
     }
   }
 
+  async function createImportedLesson() {
+    setIsGenerating(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/lessons/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: importTitle, text: importText }),
+      });
+      const body: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(errorMessage(body));
+      }
+      if (
+        typeof body !== "object" ||
+        body === null ||
+        !("lesson" in body) ||
+        typeof body.lesson !== "object" ||
+        body.lesson === null
+      ) {
+        throw new Error("La réponse du serveur est invalide.");
+      }
+
+      const nextLesson = body.lesson as LessonView;
+      setLesson(nextLesson);
+      setSelectedWord(null);
+      setReviewStatus(null);
+      setTranslationVisible(false);
+      setRecent((current) =>
+        [nextLesson, ...current.filter((item) => item.id !== nextLesson.id)].slice(
+          0,
+          10,
+        ),
+      );
+      setImportTitle("");
+      setImportText("");
+      router.replace(`/lesson?id=${nextLesson.id}`, { scroll: false });
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "L’analyse du texte importé a échoué.",
+      );
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
   async function selectWord(word: string) {
     const savedWord = lesson?.keywords.find(
       (item) => item.term.toLocaleLowerCase() === word.toLocaleLowerCase(),
@@ -494,7 +559,7 @@ export function LessonWorkspace({
       if (!response.ok) {
         throw new Error(errorMessage(body));
       }
-      setSelectedWord(body as KeywordItem);
+      setSelectedWord(body as LessonKeywordItem);
       setReviewStatus(null);
     } catch (caught) {
       setError(
@@ -525,7 +590,9 @@ export function LessonWorkspace({
           translation: selectedWord.translation,
           phonetic: selectedWord.phonetic,
           example_sentence: selectedWord.example,
-          example_translation: selectedWord.example_fr,
+          example_translation:
+            selectedWord.example_fr ?? selectedWord.translation,
+          mnemonic: selectedWord.mnemonic,
           source_lesson_id: lesson.id,
         }),
       });
@@ -620,6 +687,16 @@ export function LessonWorkspace({
 
   useHotkeys([
     {
+      key: "Enter",
+      ctrlOrMeta: true,
+      allowInInputs: true,
+      enabled: lessonMode === "import" && !isGenerating,
+      action: (event) => {
+        event.preventDefault();
+        void createImportedLesson();
+      },
+    },
+    {
       key: "p",
       altKey: true,
       enabled: lesson !== null,
@@ -707,33 +784,63 @@ export function LessonWorkspace({
         }
       >
         <section className="page-enter rounded-3xl border border-white/[0.08] bg-[#111114] p-5 shadow-xl sm:p-7">
-          <div className="mb-5 flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-xl bg-indigo-400/10 text-indigo-200">
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                fill="none"
-                className="size-5"
-              >
-                <path
-                  d="M5 19.5V6.8A1.8 1.8 0 0 1 6.8 5H19v12.7H6.8A1.8 1.8 0 0 0 5 19.5Zm0 0a1.8 1.8 0 0 1 1.8-1.8H19"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-            <div>
-              <h2 className="text-[15px] font-semibold text-slate-100">
-                Créer une micro-leçon
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Un thème qui vous intéresse, à votre niveau.
-              </p>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="grid size-10 place-items-center rounded-xl bg-indigo-400/10 text-indigo-200">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  className="size-5"
+                >
+                  <path
+                    d="M5 19.5V6.8A1.8 1.8 0 0 1 6.8 5H19v12.7H6.8A1.8 1.8 0 0 0 5 19.5Zm0 0a1.8 1.8 0 0 1 1.8-1.8H19"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+              <div>
+                <h2 className="text-[15px] font-semibold text-slate-100">
+                  Créer une micro-leçon
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Un thème ou un texte, à votre niveau.
+                </p>
+              </div>
+            </div>
+            <div
+              aria-label="Mode de création"
+              className="inline-flex max-w-full rounded-full border border-white/[0.08] bg-slate-950/70 p-1"
+              role="group"
+            >
+              {(
+                [
+                  ["generate", "Générer par IA"],
+                  ["import", "Importer un texte"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={lessonMode === mode}
+                  onClick={() => setLessonMode(mode)}
+                  disabled={isGenerating}
+                  className={`min-h-10 rounded-full px-3 text-xs font-medium transition sm:px-4 ${
+                    lessonMode === mode
+                      ? "bg-white text-zinc-950"
+                      : "text-slate-400 hover:text-slate-100"
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
 
+          {lessonMode === "generate" ? (
           <form onSubmit={generateLesson} className="space-y-4">
             <div>
               <label
@@ -816,6 +923,97 @@ export function LessonWorkspace({
               </button>
             </div>
           </form>
+          ) : (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void createImportedLesson();
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label
+                  htmlFor="import-lesson-title"
+                  className="mb-2 block text-[13px] font-medium text-slate-300"
+                >
+                  Titre <span className="text-slate-500">· facultatif</span>
+                </label>
+                <input
+                  id="import-lesson-title"
+                  value={importTitle}
+                  onChange={(event) => setImportTitle(event.target.value)}
+                  maxLength={120}
+                  placeholder="Ex. A practical guide to API design"
+                  className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950/70 px-4 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-indigo-400/70 focus:ring-4 focus:ring-indigo-400/10"
+                />
+              </div>
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label
+                    htmlFor="import-lesson-text"
+                    className="text-[13px] font-medium text-slate-300"
+                  >
+                    Texte en anglais
+                  </label>
+                  <span
+                    aria-live="polite"
+                    className={`shrink-0 font-mono text-xs tabular-nums ${
+                      importText.length > 3500
+                        ? "text-rose-300"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {importText.length.toLocaleString("fr-FR")} / 3 500
+                  </span>
+                </div>
+                <textarea
+                  id="import-lesson-text"
+                  value={importText}
+                  onChange={(event) => setImportText(event.target.value)}
+                  minLength={80}
+                  maxLength={3500}
+                  required
+                  rows={9}
+                  placeholder="Collez ici un extrait authentique en anglais…"
+                  className="w-full resize-y rounded-xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm leading-6 text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-indigo-400/70 focus:ring-4 focus:ring-indigo-400/10"
+                />
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  De 80 à 3 500 caractères. Le texte original sera conservé
+                  tel quel dans votre leçon.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-slate-500">
+                  L’IA prépare le titre, la traduction, le vocabulaire et le
+                  quiz.
+                </p>
+                <button
+                  type="submit"
+                  disabled={
+                    isGenerating ||
+                    !isConfigured ||
+                    importText.trim().length < 80
+                  }
+                  className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-medium text-zinc-950 shadow-lg shadow-white/5 transition-colors duration-150 hover:bg-zinc-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:ml-auto sm:w-auto"
+                >
+                  {isGenerating ? (
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className="size-4 animate-spin rounded-full border-2 border-zinc-400/40 border-t-zinc-700"
+                      />
+                      Analyse en cours…
+                    </>
+                  ) : (
+                    <>
+                      Analyser et créer la leçon
+                      <span aria-hidden="true">↗</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
 
           {!lesson && error ? (
             <p
@@ -853,7 +1051,7 @@ export function LessonWorkspace({
                 </time>
               </div>
               <h2 className="mt-3 font-serif text-3xl tracking-[-0.035em] text-slate-50 sm:text-4xl">
-                {lesson.topic}
+                {lesson.title ?? lesson.topic}
               </h2>
               <p className="mt-2 text-xs text-slate-500">
                 Sélectionnez un mot pour explorer son sens dans le texte.

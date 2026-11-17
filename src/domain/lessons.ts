@@ -3,16 +3,25 @@ import { db } from "@/db";
 import { activityLog, lessons } from "@/db/schema";
 import {
   GeneratedLessonPayloadSchema,
+  ImportedLessonAnalysisSchema,
+  LessonViewPayloadSchema,
   type CEFRLevel,
   type GeneratedLessonPayload,
+  type ImportLessonInput,
+  type LessonViewPayload,
 } from "@/schemas/lesson";
 import { getLLMProvider } from "@/llm/provider";
 import { LLMProviderError } from "@/llm/errors";
-import { lessonPrompts } from "@/llm/prompts/lesson";
+import { getAppSettings } from "@/domain/settings";
+import {
+  buildImportLessonPrompts,
+  lessonPrompts,
+} from "@/llm/prompts/lesson";
 
-export type LessonView = GeneratedLessonPayload & {
+export type LessonView = LessonViewPayload & {
   id: number;
   topic: string;
+  title: string | null;
   cefrLevel: string;
   createdAt: string;
   completedAt: string | null;
@@ -20,7 +29,7 @@ export type LessonView = GeneratedLessonPayload & {
 
 export type RecentLesson = Pick<
   LessonView,
-  "id" | "topic" | "cefrLevel" | "createdAt"
+  "id" | "topic" | "title" | "cefrLevel" | "createdAt"
 >;
 
 export class LessonNotFoundError extends Error {
@@ -33,7 +42,7 @@ export class LessonNotFoundError extends Error {
 function toLessonView(
   row: typeof lessons.$inferSelect,
 ): LessonView {
-  const payload = GeneratedLessonPayloadSchema.parse({
+  const payload = LessonViewPayloadSchema.parse({
     content_en: row.contentEn,
     content_fr: row.contentFr,
     keywords: JSON.parse(row.keywordsJson) as unknown,
@@ -43,6 +52,7 @@ function toLessonView(
   return {
     id: row.id,
     topic: row.topic,
+    title: row.title,
     cefrLevel: row.cefrLevel,
     createdAt: row.createdAt,
     completedAt: row.completedAt,
@@ -114,6 +124,56 @@ export async function createAndSaveLesson(
   return toLessonView(row);
 }
 
+export async function importCustomLesson({
+  text,
+  title,
+}: ImportLessonInput): Promise<LessonView> {
+  const cefrLevel = getAppSettings().targetLevel;
+  const prompts = buildImportLessonPrompts({ text, title, cefrLevel });
+  const analysis = await getLLMProvider().generateStructuredJSON(
+    prompts.systemPrompt,
+    prompts.userPrompt,
+    ImportedLessonAnalysisSchema,
+  );
+  const payload: LessonViewPayload = {
+    content_en: text,
+    content_fr: analysis.translation_fr,
+    keywords: analysis.key_vocab.map((word) => ({
+      term: word.term,
+      translation: word.translation,
+      phonetic: "",
+      example: word.example_sentence,
+      ...(word.example_sentence_fr
+        ? { example_fr: word.example_sentence_fr }
+        : {}),
+      mnemonic: word.mnemonic,
+    })),
+    quiz: analysis.quiz.map((question) => ({
+      question: question.question_en,
+      options: question.options,
+      answer_index: question.correct_index,
+      explanation: question.explanation_fr,
+    })),
+  };
+  const now = new Date().toISOString();
+  const row = db
+    .insert(lessons)
+    .values({
+      topic: "Texte importé",
+      title: title || analysis.title_en,
+      cefrLevel,
+      contentEn: text,
+      contentFr: payload.content_fr,
+      keywordsJson: JSON.stringify(payload.keywords),
+      quizJson: JSON.stringify(payload.quiz),
+      createdAt: now,
+    })
+    .returning()
+    .get();
+
+  return toLessonView(row);
+}
+
 export function getLessonById(id: number): LessonView | null {
   const row = db.select().from(lessons).where(eq(lessons.id, id)).get();
   return row ? toLessonView(row) : null;
@@ -138,6 +198,7 @@ export function listRecentLessons(limit = 10): RecentLesson[] {
     .select({
       id: lessons.id,
       topic: lessons.topic,
+      title: lessons.title,
       cefrLevel: lessons.cefrLevel,
       createdAt: lessons.createdAt,
     })

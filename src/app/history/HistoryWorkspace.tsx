@@ -761,7 +761,7 @@ export function HistoryWorkspace({
                   <li key={lesson.id} className="flex min-w-0 items-center justify-between gap-3 py-3">
                     <div className="min-w-0">
                       <p className="break-words text-sm font-medium text-zinc-100">
-                        {lesson.topic}
+                        {lesson.title ?? lesson.topic}
                       </p>
                       <p className="mt-1 text-xs text-zinc-500">
                         {lesson.cefrLevel} · {formatDate(lesson.createdAt)}
@@ -770,7 +770,7 @@ export function HistoryWorkspace({
                     <div className="flex shrink-0 items-center gap-2">
                       <Link
                         href={`/lesson?id=${lesson.id}`}
-                        aria-label={`Ouvrir la leçon ${lesson.topic}`}
+                        aria-label={`Ouvrir la leçon ${lesson.title ?? lesson.topic}`}
                         className="grid size-11 place-items-center rounded-full border border-white/[0.08] text-zinc-200 hover:bg-white/[0.05]"
                       >
                         <span aria-hidden="true">→</span>
